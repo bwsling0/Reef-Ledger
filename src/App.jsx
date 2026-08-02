@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "./firebase";
 import {
   Search, X, Plus, Camera, Calendar, Trash2, ChevronDown,
   Check, StickyNote, RotateCcw, Award, Settings, ArrowLeft, Lock
@@ -20,73 +22,408 @@ const PHYLA = [
   { id: "worms-other", name: "Worms & Other Invertebrates" },
 ];
 
+const RARITY_LEVELS = ["Common", "Uncommon", "Rare", "Very Rare"];
+const RARITY_COLOR = {
+  "Common": { bg: "rgba(143,191,174,0.18)", fg: "#8FBFAE" },
+  "Uncommon": { bg: "rgba(212,175,55,0.18)", fg: "#D4AF37" },
+  "Rare": { bg: "rgba(228,87,46,0.18)", fg: "#E4572E" },
+  "Very Rare": { bg: "rgba(180,90,220,0.18)", fg: "#C084E8" },
+};
+
+function slug(str) {
+  return String(str).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
 /* ---------------------------------------------------------
-   Default species data — North Atlantic (Canada to Cape May)
+   Species data — North Atlantic (Canada to Cape May)
+   Rarity ratings are best-estimate, based on general field-
+   guide/ecological knowledge of how often each species turns
+   up while snorkeling, diving, fishing, or boating in this
+   region — not individually sourced per species.
 --------------------------------------------------------- */
-const RAW_SPECIES = [
-  ["Atlantic Cod", "Gadus morhua", "fish-vertebrates"],
-  ["Atlantic Mackerel", "Scomber scombrus", "fish-vertebrates"],
-  ["Atlantic Herring", "Clupea harengus", "fish-vertebrates"],
-  ["Striped Bass", "Morone saxatilis", "fish-vertebrates"],
-  ["Winter Flounder", "Pseudopleuronectes americanus", "fish-vertebrates"],
-  ["Haddock", "Melanogrammus aeglefinus", "fish-vertebrates"],
-  ["Pollock", "Pollachius virens", "fish-vertebrates"],
-  ["Atlantic Sturgeon", "Acipenser oxyrinchus", "fish-vertebrates"],
-  ["Bluefin Tuna", "Thunnus thynnus", "fish-vertebrates"],
-  ["Spiny Dogfish", "Squalus acanthias", "fish-vertebrates"],
-  ["Little Skate", "Leucoraja erinacea", "fish-vertebrates"],
-  ["Harbor Seal", "Phoca vitulina", "fish-vertebrates"],
-  ["Gray Seal", "Halichoerus grypus", "fish-vertebrates"],
-  ["Harbor Porpoise", "Phocoena phocoena", "fish-vertebrates"],
-  ["Humpback Whale", "Megaptera novaeangliae", "fish-vertebrates"],
-  ["North Atlantic Right Whale", "Eubalaena glacialis", "fish-vertebrates"],
-  ["Loggerhead Sea Turtle", "Caretta caretta", "fish-vertebrates"],
-
-  ["Atlantic Sea Scallop", "Placopecten magellanicus", "mollusks"],
-  ["Blue Mussel", "Mytilus edulis", "mollusks"],
-  ["Eastern Oyster", "Crassostrea virginica", "mollusks"],
-  ["Northern Quahog", "Mercenaria mercenaria", "mollusks"],
-  ["Atlantic Razor Clam", "Ensis leei", "mollusks"],
-  ["Channeled Whelk", "Busycotypus canaliculatus", "mollusks"],
-  ["Knobbed Whelk", "Busycon carica", "mollusks"],
-  ["Moon Snail", "Euspira heros", "mollusks"],
-  ["Atlantic Longfin Squid", "Doryteuthis pealeii", "mollusks"],
-  ["Common Periwinkle", "Littorina littorea", "mollusks"],
-
-  ["American Lobster", "Homarus americanus", "crustaceans"],
-  ["Atlantic Rock Crab", "Cancer irroratus", "crustaceans"],
-  ["Jonah Crab", "Cancer borealis", "crustaceans"],
-  ["Blue Crab", "Callinectes sapidus", "crustaceans"],
-  ["Green Crab", "Carcinus maenas", "crustaceans"],
-  ["Horseshoe Crab", "Limulus polyphemus", "crustaceans"],
-  ["Sand Shrimp", "Crangon septemspinosa", "crustaceans"],
-  ["Northern Krill", "Meganyctiphanes norvegica", "crustaceans"],
-  ["Acorn Barnacle", "Semibalanus balanoides", "crustaceans"],
-
-  ["Forbes Sea Star", "Asterias forbesi", "echinoderms"],
-  ["Northern Sea Star", "Asterias rubens", "echinoderms"],
-  ["Green Sea Urchin", "Strongylocentrotus droebachiensis", "echinoderms"],
-  ["Sand Dollar", "Echinarachnius parma", "echinoderms"],
-  ["Orange-Footed Sea Cucumber", "Cucumaria frondosa", "echinoderms"],
-  ["Basket Star", "Gorgonocephalus arcticus", "echinoderms"],
-
-  ["Moon Jellyfish", "Aurelia aurita", "cnidarians"],
-  ["Lion's Mane Jellyfish", "Cyanea capillata", "cnidarians"],
-  ["Frilled Anemone", "Metridium senile", "cnidarians"],
-  ["Northern Star Coral", "Astrangia poculata", "cnidarians"],
-  ["Portuguese Man o' War", "Physalia physalis", "cnidarians"],
-
-  ["Clam Worm", "Alitta virens", "worms-other"],
-  ["Lugworm", "Arenicola marina", "worms-other"],
-  ["Bloodworm", "Glycera dibranchiata", "worms-other"],
-  ["Breadcrumb Sponge", "Halichondria panicea", "worms-other"],
-  ["Red Beard Sponge", "Microciona prolifera", "worms-other"],
-  ["Comb Jelly", "Mnemiopsis leidyi", "worms-other"],
+const FISH_VERTEBRATES = [
+  ["Atlantic Cod", "Gadus morhua", "Uncommon"],
+  ["Atlantic Mackerel", "Scomber scombrus", "Common"],
+  ["Atlantic Herring", "Clupea harengus", "Common"],
+  ["Striped Bass", "Morone saxatilis", "Common"],
+  ["Winter Flounder", "Pseudopleuronectes americanus", "Common"],
+  ["Haddock", "Melanogrammus aeglefinus", "Uncommon"],
+  ["Pollock", "Pollachius virens", "Common"],
+  ["Atlantic Sturgeon", "Acipenser oxyrinchus", "Rare"],
+  ["Bluefin Tuna", "Thunnus thynnus", "Rare"],
+  ["Spiny Dogfish", "Squalus acanthias", "Common"],
+  ["Little Skate", "Leucoraja erinacea", "Common"],
+  ["Harbor Seal", "Phoca vitulina", "Common"],
+  ["Gray Seal", "Halichoerus grypus", "Common"],
+  ["Harbor Porpoise", "Phocoena phocoena", "Uncommon"],
+  ["Humpback Whale", "Megaptera novaeangliae", "Uncommon"],
+  ["North Atlantic Right Whale", "Eubalaena glacialis", "Very Rare"],
+  ["Loggerhead Sea Turtle", "Caretta caretta", "Rare"],
+  ["Northern White Crust", "Aplidium pallidum", "Uncommon"],
+  ["Tunicate (Molgula citrina)", "Molgula citrina", "Common"],
+  ["Sea Grape", "Molgula manhattensis", "Common"],
+  ["Tunicate (Didemnum vexillum)", "Didemnum vexillum", "Common"],
+  ["Pink Sea Pork", "Aplidium pellucidum", "Uncommon"],
+  ["Stalked Tunicate", "Boltenia ovifera", "Uncommon"],
+  ["Sea Peach", "Halocynthia pyriformis", "Uncommon"],
+  ["Sea Vase", "Ciona intestinalis", "Common"],
+  ["Blood Drop Tunicate", "Botryllus schlosseri", "Common"],
+  ["Club Tunicate", "Styela clava", "Common"],
+  ["Orange Sheath Tunicate", "Botrylloides violaceus", "Uncommon"],
+  ["Golden Star Tunicate", "Botryllus schlosseri", "Common"],
+  ["Tunicate (Diplosoma listerianum)", "Diplosoma listerianum", "Uncommon"],
+  ["Appendicularian", "Oikopleura dioica", "Rare"],
+  ["Blue Shark", "Prionace glauca", "Uncommon"],
+  ["Basking Shark", "Cetorhinus maximus", "Rare"],
+  ["Atlantic Torpedo", "Torpedo nobiliana", "Rare"],
+  ["Winter Skate", "Leucoraja ocellata", "Common"],
+  ["Clearnose Skate", "Raja eglanteria", "Uncommon"],
+  ["American Eel", "Anguilla rostrata", "Common"],
+  ["Atlantic Menhaden", "Brevoortia tyrannus", "Common"],
+  ["Red Hake", "Urophycis chuss", "Common"],
+  ["Spotted Hake", "Urophycis regia", "Uncommon"],
+  ["Tomcod", "Microgadus tomcod", "Common"],
+  ["Oyster Toadfish", "Opsanus tau", "Common"],
+  ["Goosefish", "Lophius americanus", "Uncommon"],
+  ["Northern Pipefish", "Syngnathus fuscus", "Common"],
+  ["Lined Seahorse", "Hippocampus erectus", "Rare"],
+  ["Acadian Redfish", "Sebastes fasciatus", "Uncommon"],
+  ["Striped Searobin", "Prionotus evolans", "Common"],
+  ["Northern Searobin", "Prionotus carolinus", "Common"],
+  ["Longhorn Sculpin", "Myoxocephalus octodecemspinosus", "Common"],
+  ["Grubby", "Myoxocephalus aenaeus", "Common"],
+  ["Shorthorn Sculpin", "Myoxocephalus scorpius", "Common"],
+  ["Sea Raven", "Hemitripterus americanus", "Common"],
+  ["Alligatorfish", "Aspidophoroides monopterygius", "Rare"],
+  ["Lumpfish", "Cyclopterus lumpus", "Uncommon"],
+  ["Atlantic Spiny Lumpsucker", "Eumicrotremus spinosus", "Rare"],
+  ["Inquiline Snailfish", "Liparis inquilinus", "Rare"],
+  ["Variegated Snailfish", "Liparis gibbus", "Rare"],
+  ["Black Sea Bass", "Centropristis striata", "Common"],
+  ["Cobia", "Rachycentron canadum", "Rare"],
+  ["Mackerel Scad", "Decapterus macarellus", "Uncommon"],
+  ["Sheepshead", "Archosargus probatocephalus", "Uncommon"],
+  ["Scup", "Stenotomus chrysops", "Common"],
+  ["Tautog", "Tautoga onitis", "Common"],
+  ["Cunner", "Tautogolabrus adspersus", "Common"],
+  ["Ocean Pout", "Zoarces americanus", "Common"],
+  ["Snakeblenny", "Lumpenus lampretaeformis", "Rare"],
+  ["Arctic Shanny", "Stichaeus punctatus", "Rare"],
+  ["Radiated Shanny", "Ulvaria subbifurcata", "Uncommon"],
+  ["Rock Gunnel", "Pholis gunnellus", "Common"],
+  ["Atlantic Wolffish", "Anarhichas lupus", "Uncommon"],
+  ["American Sand Lance", "Ammodytes americanus", "Common"],
+  ["Windowpane Flounder", "Scophthalmus aquosus", "Common"],
+  ["Summer Flounder", "Paralichthys dentatus", "Common"],
+  ["Fourspot Flounder", "Hippoglossina oblonga", "Uncommon"],
+  ["American Plaice", "Hippoglossoides platessoides", "Uncommon"],
+  ["Gray Triggerfish", "Balistes capriscus", "Uncommon"],
+  ["Northern Puffer", "Sphoeroides maculatus", "Common"],
+  ["Ocean Sunfish", "Mola mola", "Rare"],
 ];
 
-const DEFAULT_SPECIES = RAW_SPECIES.map(([name, latin, phylum], i) => ({
-  id: "d" + i, name, latin, phylum, region: "north-atlantic",
-}));
+const CRUSTACEANS = [
+  ["American Lobster", "Homarus americanus", "Common"],
+  ["Atlantic Rock Crab", "Cancer irroratus", "Common"],
+  ["Jonah Crab", "Cancer borealis", "Common"],
+  ["Blue Crab", "Callinectes sapidus", "Common"],
+  ["Green Crab", "Carcinus maenas", "Common"],
+  ["Horseshoe Crab", "Limulus polyphemus", "Common"],
+  ["Northern Krill", "Meganyctiphanes norvegica", "Uncommon"],
+  ["Acorn Barnacle", "Semibalanus balanoides", "Common"],
+  ["Lentil Sea Spider", "Anoplodactylus lentus", "Rare"],
+  ["Anemone Sea Spider", "Pycnogonum litorale", "Uncommon"],
+  ["Baltic Isopod", "Idotea balthica", "Common"],
+  ["Hedgehog Amphipod", "Gammarus oceanicus", "Uncommon"],
+  ["Portly Spider Crab", "Libinia emarginata", "Common"],
+  ["Arctic Lyre Crab", "Hyas coarctatus", "Uncommon"],
+  ["Atlantic Sand Crab", "Emerita talpoida", "Common"],
+  ["Ocellate Lady Crab", "Ovalipes ocellatus", "Common"],
+  ["Snow Crab", "Chionoecetes opilio", "Uncommon"],
+  ["Norway King Crab", "Lithodes maja", "Rare"],
+  ["Atlantic Fiddler Crab", "Uca pugnax", "Common"],
+];
+
+const CRUSTACEAN_GROUPS = [
+  { name: "Barnacle", variants: [
+    ["Northern Rock Barnacle", "Semibalanus balanoides", "Common"],
+    ["Rough Barnacle", "Balanus crenatus", "Common"],
+    ["Ivory Barnacle", "Balanus eburneus", "Uncommon"],
+  ]},
+  { name: "Shrimp", variants: [
+    ["Skeleton Shrimp", "Caprella linearis", "Common"],
+    ["Mysid Shrimp", "Neomysis americana", "Common"],
+    ["Sand Shrimp", "Crangon septemspinosa", "Common"],
+    ["Sculptured Shrimp", "Sclerocrangon boreas", "Rare"],
+    ["Aesop Shrimp", "Pandalus montagui", "Uncommon"],
+    ["Polar Lebbeid", "Lebbeus polaris", "Rare"],
+    ["Spiny Lebbeid Shrimp", "Lebbeus groenlandicus", "Rare"],
+    ["Zebra Lebbeid", "Lebbeus microceros", "Rare"],
+  ]},
+  { name: "Hermit Crab", variants: [
+    ["Hairy Hermit Crab", "Pagurus arcuatus", "Uncommon"],
+    ["Longwrist Hermit Crab", "Pagurus longicarpus", "Common"],
+    ["Acadian Hermit Crab", "Pagurus acadianus", "Common"],
+  ]},
+];
+
+const ECHINODERMS = [
+  ["Forbes Sea Star", "Asterias forbesi", "Common"],
+  ["Northern Sea Star", "Asterias rubens", "Common"],
+  ["Green Sea Urchin", "Strongylocentrotus droebachiensis", "Common"],
+  ["Sand Dollar", "Echinarachnius parma", "Common"],
+  ["Orange-Footed Sea Cucumber", "Cucumaria frondosa", "Uncommon"],
+  ["Basket Star", "Gorgonocephalus arcticus", "Rare"],
+  ["Scarlet Psolus", "Psolus fabricii", "Rare"],
+  ["Brown Psolus", "Psolus phantapus", "Uncommon"],
+  ["Hairy Sea Cucumber", "Sclerodactyla briareus", "Uncommon"],
+  ["Silky Sea Cucumber", "Chiridota laevis", "Uncommon"],
+  ["Purple-Spined Sea Urchin", "Arbacia punctulata", "Common"],
+  ["Smooth Sunstar", "Solaster endeca", "Rare"],
+  ["Spiny Sunstar", "Crossaster papposus", "Uncommon"],
+  ["Blood Star", "Henricia sanguinolenta", "Common"],
+  ["Polar Sea Star", "Leptasterias polaris", "Uncommon"],
+  ["Green Slender Sea Star", "Leptasterias tenera", "Rare"],
+  ["Horse Star", "Hippasteria phrygiana", "Rare"],
+  ["Badge Star", "Poraniomorpha hispida", "Rare"],
+  ["Winged Sea Star", "Pteraster militaris", "Rare"],
+  ["Daisy Brittle Star", "Ophiopholis aculeata", "Common"],
+];
+
+const CNIDARIANS_SINGLE = [
+  ["Tubularian Hydroid", "Ectopleura larynx", "Common"],
+  ["Hydroid (Candelabrum phrygium)", "Candelabrum phrygium", "Rare"],
+  ["Solitary Hydroid", "Corymorpha pendula", "Uncommon"],
+  ["Snail Fur", "Hydractinia echinata", "Common"],
+  ["Knotted Thread Hydroid", "Eudendrium ramosum", "Uncommon"],
+  ["Leptomedusa", "Leptomedusae", "Uncommon"],
+  ["Siphonophore", "Siphonophorae", "Rare"],
+  ["Portuguese Man-of-War", "Physalia physalis", "Rare"],
+  ["Lion's Mane Jellyfish", "Cyanea capillata", "Common"],
+  ["Moon Jellyfish", "Aurelia aurita", "Common"],
+  ["Eared Stalked Jellyfish", "Haliclystus auricula", "Rare"],
+  ["Trumpet Stalked Jellyfish", "Calvadosia campanulata", "Rare"],
+  ["Horn Stalked Jellyfish", "Haliclystus salpinx", "Rare"],
+  ["Dead Man's Fingers", "Alcyonium digitatum", "Common"],
+  ["Sea Strawberry Soft Coral", "Gersemia rubiformis", "Uncommon"],
+  ["Northern Star Coral", "Astrangia poculata", "Uncommon"],
+  ["Northern Cerianthid", "Cerianthus borealis", "Uncommon"],
+];
+
+const CNIDARIAN_GROUPS = [
+  {
+    name: "Hydromedusa",
+    variants: [
+      ["Clapper Hydromedusa", "Staurophora mertensii", "Rare"],
+      ["Many-Armed Hydromedusa", "Aequorea forskalea", "Rare"],
+      ["Manyribbed Hydromedusa", "Aequorea macrodactyla", "Rare"],
+      ["White Cross Hydromedusa", "Mitrocomella polydiademata", "Rare"],
+      ["Eight Ribbed Hydromedusa", "Melicertum octocostatum", "Rare"],
+      ["Hydromedusa (Ptychogena lactea)", "Ptychogena lactea", "Very Rare"],
+      ["Elegant Hydromedusa", "Phialidium elegans", "Rare"],
+    ],
+  },
+  {
+    name: "Anemone",
+    variants: [
+      ["Lined Anemone", "Fagesia lineata", "Uncommon"],
+      ["Silver-spotted Anemone", "Bunodactis stella", "Rare"],
+      ["Northern Red Anemone", "Urticina felina", "Common"],
+      ["Swimming Anemone", "Stomphia coccinea", "Rare"],
+      ["Clonal Plumose Anemone", "Metridium senile", "Common"],
+      ["White Anemone", "Diadumene leucolena", "Uncommon"],
+      ["Rugose Anemone", "Urticina crassicornis", "Uncommon"],
+      ["Burrowing Anemone", "Edwardsia elegans", "Uncommon"],
+    ],
+  },
+];
+
+const WORMS_OTHER_SINGLE = [
+  ["Lugworm", "Arenicola marina", "Common"],
+  ["Bloodworm", "Glycera dibranchiata", "Common"],
+  ["Finger Sponge", "Haliclona oculata", "Common"],
+  ["Breadcrumb Sponge", "Halichondria panicea", "Common"],
+  ["Sponge (Polymastia mammillaris)", "Polymastia mammillaris", "Uncommon"],
+  ["Sponge (Halichondria sitiens)", "Halichondria sitiens", "Uncommon"],
+  ["Purple Sponge", "Haliclona permollis", "Uncommon"],
+  ["Boring Sponge", "Cliona celata", "Common"],
+  ["Red Beard Sponge", "Microciona prolifera", "Common"],
+  ["Palmate Sponge", "Isodictya palmata", "Uncommon"],
+  ["Warty Sponge", "Myxilla fimbriata", "Rare"],
+  ["Chalice Sponge", "Mycale lingua", "Rare"],
+  ["Chevron Amphiporus", "Amphiporus angulatus", "Uncommon"],
+  ["Northern Lamp Shell", "Terebratulina septentrionalis", "Rare"],
+  ["Spiral-tufted Bryozoan", "Bugula turrita", "Uncommon"],
+  ["Sea Lace", "Electra pilosa", "Common"],
+  ["Red Crust", "Cryptosula pallasiana", "Common"],
+  ["Ellis' Bryozoan", "Flustra foliacea", "Uncommon"],
+];
+
+const WORMS_OTHER_GROUPS = [
+  {
+    name: "Comb Jelly",
+    variants: [
+      ["Sea Gooseberry", "Pleurobrachia pileus", "Common"],
+      ["Northern Comb Jelly", "Bolinopsis infundibulum", "Uncommon"],
+      ["Sea Walnut", "Mnemiopsis leidyi", "Common"],
+      ["Beroe's Comb Jelly", "Beroe cucumis", "Uncommon"],
+    ],
+  },
+  {
+    name: "Errant Worms",
+    variants: [
+      ["Leafy Paddle Worm", "Phyllodoce mucosa", "Common"],
+      ["Plankton Worm", "Tomopteris helgolandica", "Rare"],
+      ["Twelve-Scaled Worm", "Lepidonotus squamatus", "Common"],
+      ["Fifteen-Scaled Worm", "Harmothoe imbricata", "Common"],
+      ["Clam Worm", "Alitta virens", "Common"],
+      ["Eyed-Fringed Worm", "Eteone lactea", "Uncommon"],
+      ["Johnston's Ornate Worm", "Eumida sanguinea", "Uncommon"],
+    ],
+  },
+  {
+    name: "Sedentary Worms",
+    variants: [
+      ["Red Terebellid Worm", "Eupolymnia nebulosa", "Uncommon"],
+      ["Terebellid Worm", "Terebellidae", "Common"],
+      ["Bamboo Worm", "Clymenella torquata", "Common"],
+      ["Sabellid Worm", "Sabella pavonina", "Common"],
+      ["Slime Worm", "Myxicola infundibulum", "Uncommon"],
+      ["Sinistral Spiral Tube Worm", "Spirorbis spirorbis", "Common"],
+      ["Lacy Tube Worm", "Filograna implexa", "Uncommon"],
+      ["Spoon Worm", "Echiurus echiurus", "Rare"],
+    ],
+  },
+];
+
+const MOLLUSK_SINGLE = [
+  ["Plate Limpet", "Tectura testudinalis", "Common"],
+  ["Common Periwinkle", "Littorina littorea", "Common"],
+  ["Rough Periwinkle", "Littorina saxatilis", "Common"],
+  ["Yellow Periwinkle", "Littorina obtusata", "Uncommon"],
+  ["Moon Snail", "Euspira heros", "Common"],
+  ["Shark Eye", "Neverita duplicata", "Uncommon"],
+  ["Atlantic Oyster Drill", "Urosalpinx cinerea", "Common"],
+  ["Atlantic Dogwinkle", "Nucella lapillus", "Common"],
+  ["Stimpson's Colus", "Colus stimpsoni", "Rare"],
+  ["Boreal Topsnail", "Margarites helicinus", "Uncommon"],
+  ["Naked Sea Butterfly", "Clione limacina", "Rare"],
+  ["Eastern Oyster", "Crassostrea virginica", "Common"],
+  ["Common Jingle", "Anomia simplex", "Common"],
+  ["Great Piddock", "Zirfaea crispata", "Uncommon"],
+  ["Blood Ark", "Anadara ovalis", "Uncommon"],
+  ["Northern Cyclocardia", "Cyclocardia borealis", "Uncommon"],
+  ["Wavy Astarte", "Astarte undata", "Uncommon"],
+  ["Arctic Wedgeclam", "Mesodesma arctatum", "Uncommon"],
+  ["Rounded Pandora", "Pandora gouldiana", "Rare"],
+  ["Longfin Inshore Squid", "Doryteuthis pealeii", "Common"],
+];
+
+const MOLLUSK_GROUPS = [
+  { name: "Chiton", variants: [
+    ["Mottled Chiton", "Tonicella marmorea", "Common"],
+    ["Dressed Chiton", "Ischnochiton albus", "Uncommon"],
+    ["Eastern Beaded Chiton", "Chaetopleura apiculata", "Uncommon"],
+  ]},
+  { name: "Wentletrap", variants: [
+    ["Brown-band Wentletrap", "Epitonium rupicola", "Uncommon"],
+    ["Greenland Wentletrap", "Epitonium greenlandicum", "Rare"],
+  ]},
+  { name: "Slippersnail", variants: [
+    ["Common Slippersnail", "Crepidula fornicata", "Common"],
+    ["Eastern White Slippersnail", "Crepidula plana", "Uncommon"],
+  ]},
+  { name: "Mudsnail", variants: [
+    ["Threeline Mudsnail", "Ilyanassa trivittata", "Common"],
+    ["Eastern Mudsnail", "Ilyanassa obsoleta", "Common"],
+  ]},
+  { name: "Whelk", variants: [
+    ["Waved Whelk", "Buccinum undatum", "Common"],
+    ["Wrinkled Whelk", "Buccinum tenue", "Uncommon"],
+    ["Channeled Whelk", "Busycotypus canaliculatus", "Common"],
+    ["Knobbed Whelk", "Busycon carica", "Common"],
+  ]},
+  { name: "Cadlina", variants: [
+    ["Yellow-edge Cadlina", "Cadlina luteomarginata", "Rare"],
+    ["White Atlantic Cadlina", "Cadlina laevis", "Rare"],
+  ]},
+  { name: "Doris", variants: [
+    ["Barnacle-eating Onchidoris", "Onchidoris muricata", "Uncommon"],
+    ["Fuzzy Onchidoris", "Onchidoris bilamellata", "Uncommon"],
+    ["Hairy Spiny Doris", "Acanthodoris pilosa", "Rare"],
+    ["Yellow False Doris", "Doriopsilla albolineata", "Rare"],
+  ]},
+  { name: "Nudibranch", variants: [
+    ["Rim-backed Nudibranch", "Doto coronata", "Rare"],
+    ["Atlantic Ancula", "Ancula gibbosa", "Rare"],
+    ["Frond Aeolis Nudibranch", "Dendronotus frondosus", "Uncommon"],
+    ["Robust Frond Aeolis", "Dendronotus robustus", "Rare"],
+    ["Dwarf Balloon Aeolis", "Eubranchus pallidus", "Rare"],
+    ["Pellucid Aeolis", "Eubranchus pellucidus", "Uncommon"],
+    ["Red-finger Aeolis", "Flabellina verrucosa", "Uncommon"],
+    ["Aeolis Nudibranch", "—", "Uncommon"],
+    ["Salmon Aeolis", "Flabellina salmonacea", "Rare"],
+    ["Shag-rug Aeolis", "Aeolidia papillosa", "Rare"],
+    ["Green Balloon Aeolis", "Eubranchus rupium", "Rare"],
+    ["Painted Balloon Aeolis", "Eubranchus sp.", "Very Rare"],
+    ["Orange-tip Cuthona", "Cuthona amoena", "Rare"],
+    ["Nudibranch (Cuthona pustulata)", "Cuthona pustulata", "Rare"],
+    ["Nudibranch (Doto formosa)", "Doto formosa", "Rare"],
+    ["Winged Thecacera", "Thecacera pennigera", "Very Rare"],
+    ["Nudibranch (Okenia ascidicola)", "Okenia ascidicola", "Very Rare"],
+  ]},
+  { name: "Mussel", variants: [
+    ["Blue Mussel", "Mytilus edulis", "Common"],
+    ["Ribbed Mussel", "Geukensia demissa", "Common"],
+    ["Northern Horse Mussel", "Modiolus modiolus", "Uncommon"],
+    ["Black Mussel", "Mytilus trossulus", "Uncommon"],
+  ]},
+  { name: "Scallop", variants: [
+    ["Iceland Scallop", "Chlamys islandica", "Rare"],
+    ["Sea Scallop", "Placopecten magellanicus", "Common"],
+    ["Bay Scallop", "Argopecten irradians", "Common"],
+  ]},
+  { name: "Quahog", variants: [
+    ["Ocean Quahog", "Arctica islandica", "Uncommon"],
+    ["Northern Quahog", "Mercenaria mercenaria", "Common"],
+  ]},
+  { name: "Clam", variants: [
+    ["Atlantic Surfclam", "Spisula solidissima", "Common"],
+    ["Greenland Smoothcockle", "Serripes groenlandicus", "Uncommon"],
+    ["Atlantic Razorclam", "Ensis leei", "Common"],
+    ["Softshell Clam", "Mya arenaria", "Common"],
+    ["Truncate Softshell Clam", "Mya truncata", "Uncommon"],
+  ]},
+];
+
+function buildSingle(list, phylum) {
+  return list.map(([name, latin, rarity]) => ({
+    id: `${phylum}__${slug(name)}`, name, latin, rarity, phylum, region: "north-atlantic",
+  }));
+}
+function buildGroups(groups, phylum) {
+  // Flattened: every variant becomes its own standalone species row.
+  // IDs keep the original group__variant shape so anyone's saved
+  // progress under the old grouped IDs still matches up.
+  return groups.flatMap((g) =>
+    g.variants.map(([vn, vl, vr]) => ({
+      id: `${phylum}__group-${slug(g.name)}__${slug(vn)}`, name: vn, latin: vl, rarity: vr, phylum, region: "north-atlantic",
+    }))
+  );
+}
+
+const DEFAULT_SPECIES = [
+  ...buildSingle(FISH_VERTEBRATES, "fish-vertebrates"),
+  ...buildSingle(MOLLUSK_SINGLE, "mollusks"),
+  ...buildGroups(MOLLUSK_GROUPS, "mollusks"),
+  ...buildSingle(CRUSTACEANS, "crustaceans"),
+  ...buildGroups(CRUSTACEAN_GROUPS, "crustaceans"),
+  ...buildSingle(ECHINODERMS, "echinoderms"),
+  ...buildSingle(CNIDARIANS_SINGLE, "cnidarians"),
+  ...buildGroups(CNIDARIAN_GROUPS, "cnidarians"),
+  ...buildSingle(WORMS_OTHER_SINGLE, "worms-other"),
+  ...buildGroups(WORMS_OTHER_GROUPS, "worms-other"),
+];
 
 const STORAGE_KEY = "reef-ledger-data";
 
@@ -150,7 +487,7 @@ const PHYLUM_ICON = {
 };
 
 /* ---------------------------------------------------------
-   Themes — token sets driving all visual styling
+   Theme
 --------------------------------------------------------- */
 const THEMES = {
   real: {
@@ -158,50 +495,17 @@ const THEMES = {
     headingFont: "'Fraunces', serif",
     bodyFont: "'Inter', sans-serif",
     monoFont: "'IBM Plex Mono', monospace",
-    headingItalic: true,
-    bg: "#0E2626",
-    bgIsGradient: false,
-    panel: "#0A1D1D",
-    panelAlt: "#0E2626",
-    border: "#547368",
-    borderWidth: 1,
-    text: "#EAE3D2",
-    textDim: "#547368",
-    accent: "#8FBFAE",
-    coral: "#E4572E",
-    radius: 8,
-    radiusLg: 16,
-    radiusPill: 8,
-    shadow: "none",
-    buttonShadow: "none",
-    letterSpacing: "0.04em",
-  },
-  cartoon: {
-    label: "Cartoon",
-    headingFont: "'Baloo 2', cursive",
-    bodyFont: "'Nunito', sans-serif",
-    monoFont: "'Nunito', sans-serif",
-    headingItalic: false,
-    bg: "linear-gradient(180deg, #7FD8F2 0%, #9FE3A0 60%, #7FCB6E 100%)",
-    bgIsGradient: true,
-    panel: "#FFFBEF",
-    panelAlt: "#FFF3D6",
-    border: "#8B5A2B",
-    borderWidth: 3,
-    text: "#3B2412",
-    textDim: "#8B5A2B",
-    accent: "#2E9E5B",
-    coral: "#FF5A5F",
-    radius: 20,
-    radiusLg: 28,
-    radiusPill: 999,
-    shadow: "0 3px 0 rgba(139,90,43,0.5)",
-    buttonShadow: "0 4px 0 rgba(0,0,0,0.25)",
-    letterSpacing: "0",
+    bg: "#0E2626", bgIsGradient: false,
+    panel: "#0A1D1D", panelAlt: "#0E2626",
+    border: "#547368", borderWidth: 1,
+    text: "#EAE3D2", textDim: "#547368",
+    accent: "#8FBFAE", coral: "#E4572E",
+    radius: 8, radiusLg: 16, radiusPill: 8,
+    shadow: "none", buttonShadow: "none", letterSpacing: "0.04em",
   },
 };
 
-const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap');`;
+const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap');`;
 
 const TIER_COLOR = {
   platinum: { fill: "#E8F1F2", ring: "#5D7A82" },
@@ -210,22 +514,21 @@ const TIER_COLOR = {
   bronze: { fill: "#CD8A4A", ring: "#8A5A2B" },
   locked: { fill: "transparent", ring: "#6B7C74" },
 };
-
 const TIER_THRESHOLDS = [
-  { tier: "locked", label: "Locked", desc: "0 found" },
-  { tier: "bronze", label: "Bronze", desc: "1–49% found" },
-  { tier: "silver", label: "Silver", desc: "50–89% found" },
-  { tier: "gold", label: "Gold", desc: "90–99% found" },
+  { tier: "locked", label: "Locked", desc: "0–24% found" },
+  { tier: "bronze", label: "Bronze", desc: "25–49% found" },
+  { tier: "silver", label: "Silver", desc: "50–74% found" },
+  { tier: "gold", label: "Gold", desc: "75–99% found" },
   { tier: "platinum", label: "Platinum", desc: "100% found" },
 ];
-
 function getTier(found, total) {
-  if (!total || found === 0) return "locked";
-  if (found === total) return "platinum";
+  if (!total) return "locked";
   const pct = (found / total) * 100;
-  if (pct >= 90) return "gold";
+  if (pct >= 100) return "platinum";
+  if (pct >= 75) return "gold";
   if (pct >= 50) return "silver";
-  return "bronze";
+  if (pct >= 25) return "bronze";
+  return "locked";
 }
 
 /* ---------------------------------------------------------
@@ -255,10 +558,13 @@ function compressImage(file, maxDim = 700, quality = 0.6) {
 }
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 
-/* ---------------------------------------------------------
-   Medal badge
---------------------------------------------------------- */
-function MedalBadge({ tier, size = 46, t }) {
+function RarityTag({ rarity, styles }) {
+  if (!rarity) return null;
+  const c = RARITY_COLOR[rarity] || RARITY_COLOR["Common"];
+  return <span style={{ ...styles.rarityTag, background: c.bg, color: c.fg }}>{rarity}</span>;
+}
+
+function MedalBadge({ tier, size = 46 }) {
   const c = TIER_COLOR[tier];
   return (
     <svg width={size} height={size * 1.15} viewBox="0 0 48 56">
@@ -276,15 +582,15 @@ function MedalBadge({ tier, size = 46, t }) {
 /* ---------------------------------------------------------
    Main component
 --------------------------------------------------------- */
-export default function ReefLedger() {
+export default function ReefLedger({ user, onSignOut }) {
   const [records, setRecords] = useState({});
   const [customSpecies, setCustomSpecies] = useState([]);
-  const [themeName, setThemeName] = useState("real");
+  const [themeName] = useState("real");
   const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState(null);
 
   const [selectedRegion, setSelectedRegion] = useState(REGIONS[0].id);
-  const [selectedPhylum, setSelectedPhylum] = useState(PHYLA[0].id);
+  const [selectedPhylum, setSelectedPhylum] = useState("all");
   const [search, setSearch] = useState("");
   const [foundOnly, setFoundOnly] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
@@ -299,44 +605,50 @@ export default function ReefLedger() {
 
   const allSpecies = useMemo(() => [...DEFAULT_SPECIES, ...customSpecies], [customSpecies]);
 
+  const flatSpecies = allSpecies;
+
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setRecords(parsed.records || {});
-        setCustomSpecies(parsed.customSpecies || []);
-        setThemeName(parsed.theme === "cartoon" ? "cartoon" : "real");
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "users", user.uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          setRecords(data.records || {});
+          setCustomSpecies(data.customSpecies || []);
+        }
+      } catch (err) {
+        setSaveError("Couldn't load your saved data. Check your connection and refresh.");
+      } finally {
+        setLoaded(true);
       }
-    } catch (err) {
-      // first run
-    } finally {
-      setLoaded(true);
-    }
-  }, []);
+    })();
+  }, [user.uid]);
 
   useEffect(() => {
     if (!loaded) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ records, customSpecies, theme: themeName }));
-      setSaveError(null);
-    } catch (err) {
-      setSaveError("Couldn't save — your changes may not persist. Photos take up a lot of space; try removing some if this keeps happening.");
-    }
-  }, [records, customSpecies, themeName, loaded]);
+    (async () => {
+      try {
+        await setDoc(doc(db, "users", user.uid), { records, customSpecies });
+        setSaveError(null);
+      } catch (err) {
+        setSaveError("Couldn't save — your changes may not persist. Check your connection.");
+      }
+    })();
+  }, [records, customSpecies, loaded, user.uid]);
 
-  const regionSpecies = allSpecies.filter((s) => s.region === selectedRegion);
-  const foundCountRegion = regionSpecies.filter((s) => records[s.id]?.found).length;
+  const regionSpeciesFlat = flatSpecies.filter((s) => s.region === selectedRegion);
+  const foundCountRegion = regionSpeciesFlat.filter((s) => records[s.id]?.found).length;
 
-  const filtered = regionSpecies.filter((s) => {
-    if (s.phylum !== selectedPhylum) return false;
+  const filtered = allSpecies.filter((s) => {
+    if (s.region !== selectedRegion) return false;
+    if (selectedPhylum !== "all" && s.phylum !== selectedPhylum) return false;
     if (foundOnly && !records[s.id]?.found) return false;
     if (search && !s.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const phylumStats = PHYLA.map((p) => {
-    const list = regionSpecies.filter((s) => s.phylum === p.id);
+    const list = regionSpeciesFlat.filter((s) => s.phylum === p.id);
     const found = list.filter((s) => records[s.id]?.found).length;
     return { ...p, total: list.length, found, tier: getTier(found, list.length) };
   });
@@ -351,9 +663,9 @@ export default function ReefLedger() {
   function updateRecord(id, patch) {
     setRecords((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }));
   }
-  function addCustomSpecies({ name, latin, phylum }) {
+  function addCustomSpecies({ name, latin, phylum, rarity }) {
     const id = "c" + Date.now();
-    setCustomSpecies((prev) => [...prev, { id, name, latin, phylum, region: selectedRegion }]);
+    setCustomSpecies((prev) => [...prev, { id, name, latin, phylum, rarity, region: selectedRegion }]);
     setShowAddForm(false);
   }
   function removeCustomSpecies(id) {
@@ -361,31 +673,21 @@ export default function ReefLedger() {
     setRecords((prev) => { const next = { ...prev }; delete next[id]; return next; });
     setSelectedId(null);
   }
-  function handleReset() {
+  async function handleReset() {
     try {
-      localStorage.removeItem(STORAGE_KEY);
+      await setDoc(doc(db, "users", user.uid), { records: {}, customSpecies: [] });
     } catch (err) {}
     setRecords({});
     setCustomSpecies([]);
     setShowResetConfirm(false);
   }
 
-  const selected = allSpecies.find((s) => s.id === selectedId);
-  const currentPhylumName = PHYLA.find((p) => p.id === selectedPhylum)?.name || "";
-
-  const cartoon = t.label === "Cartoon";
+  const selected = flatSpecies.find((s) => s.id === selectedId) || customSpecies.find((s) => s.id === selectedId);
+  const currentPhylumName = selectedPhylum === "all" ? "All" : (PHYLA.find((p) => p.id === selectedPhylum)?.name || "");
 
   return (
     <div style={styles.app}>
       <style>{FONT_IMPORT}</style>
-      {cartoon && (
-        <>
-          <div style={styles.frameBolt("tl")} />
-          <div style={styles.frameBolt("tr")} />
-          <div style={styles.frameBolt("bl")} />
-          <div style={styles.frameBolt("br")} />
-        </>
-      )}
       <div style={styles.panel}>
 
       <header style={styles.header}>
@@ -399,9 +701,12 @@ export default function ReefLedger() {
         </div>
 
         <div style={styles.headerRight}>
-          <div style={styles.stamp}>
-            <div style={styles.stampCount}>{foundCountRegion}</div>
-            <div style={styles.stampTotal}>/ {regionSpecies.length}</div>
+          <div style={styles.stampGroup}>
+            <div style={styles.stamp}>
+              <div style={styles.stampCount}>{foundCountRegion}</div>
+              <div style={styles.stampTotal}>/ {regionSpeciesFlat.length}</div>
+            </div>
+            <div style={styles.stampCaption}>Species<br />Discovered</div>
           </div>
           <button style={styles.iconBtn} onClick={() => setShowSettings(true)} title="Settings">
             <Settings size={20} />
@@ -422,6 +727,9 @@ export default function ReefLedger() {
       </div>
 
       <div style={styles.phylumTabs}>
+        <button onClick={() => setSelectedPhylum("all")} style={{ ...styles.phylumTab, ...(selectedPhylum === "all" ? styles.phylumTabActive : {}) }}>
+          All
+        </button>
         {PHYLA.map((p) => (
           <button key={p.id} onClick={() => setSelectedPhylum(p.id)} style={{ ...styles.phylumTab, ...(selectedPhylum === p.id ? styles.phylumTabActive : {}) }}>
             {p.name}
@@ -445,8 +753,9 @@ export default function ReefLedger() {
           <div style={styles.empty}>Nothing here yet. Try a different search, or log a species you've spotted that isn't on the list.</div>
         )}
         {filtered.map((s) => {
-          const rec = records[s.id];
           const PlaceholderIcon = PHYLUM_ICON[s.phylum] || FishIcon;
+
+          const rec = records[s.id];
           const isCustom = s.id.startsWith("c");
           const thumb = rec?.photos?.[0];
           return (
@@ -455,7 +764,11 @@ export default function ReefLedger() {
                 {rec?.found ? <Check size={15} strokeWidth={3} /> : null}
               </div>
               <div style={styles.rowText}>
-                <div style={styles.rowName}>{s.name}{isCustom && <span style={styles.customTag}>added</span>}</div>
+                <div style={styles.rowName}>
+                  {s.name}
+                  {isCustom && <span style={styles.customTag}>added</span>}
+                  <RarityTag rarity={s.rarity} styles={styles} />
+                </div>
                 <div style={styles.rowLatin}>{s.latin}</div>
                 {rec?.found && rec?.date && <div style={styles.metaDate}>{rec.date}</div>}
               </div>
@@ -488,7 +801,7 @@ export default function ReefLedger() {
       )}
 
       {showAddForm && (
-        <AddSpeciesModal styles={styles} defaultPhylum={selectedPhylum} onClose={() => setShowAddForm(false)} onAdd={addCustomSpecies} />
+        <AddSpeciesModal styles={styles} defaultPhylum={selectedPhylum === "all" ? PHYLA[0].id : selectedPhylum} onClose={() => setShowAddForm(false)} onAdd={addCustomSpecies} />
       )}
 
       {showResetConfirm && (
@@ -501,24 +814,23 @@ export default function ReefLedger() {
           phylumStats={phylumStats}
           mapPhylum={mapPhylum}
           setMapPhylum={setMapPhylum}
-          allSpeciesForPhylum={(pid) => regionSpecies.filter((s) => s.phylum === pid)}
+          allSpeciesForPhylum={(pid) => regionSpeciesFlat.filter((s) => s.phylum === pid)}
           records={records}
           onClose={() => { setShowAchievements(false); setMapPhylum(null); }}
         />
       )}
 
       {showSettings && (
-        <SettingsModal styles={styles} t={t} themeName={themeName} setThemeName={setThemeName} onClose={() => setShowSettings(false)} />
+        <SettingsModal styles={styles} onClose={() => setShowSettings(false)} userEmail={user.email} onSignOut={onSignOut} />
       )}
     </div>
   );
 }
 
 /* ---------------------------------------------------------
-   Achievements + Collection Map
+   Achievements + Collection grid
 --------------------------------------------------------- */
 function AchievementsModal({ styles, t, phylumStats, mapPhylum, setMapPhylum, allSpeciesForPhylum, records, onClose }) {
-  const cartoon = t.label === "Cartoon";
   if (mapPhylum) {
     const phylum = phylumStats.find((p) => p.id === mapPhylum);
     const species = allSpeciesForPhylum(mapPhylum);
@@ -527,7 +839,7 @@ function AchievementsModal({ styles, t, phylumStats, mapPhylum, setMapPhylum, al
     const PlaceholderIcon = PHYLUM_ICON[mapPhylum] || FishIcon;
     return (
       <div style={styles.overlay} onClick={onClose}>
-        <div style={{ ...styles.modal, ...(cartoon ? { maxWidth: 560 } : {}) }} onClick={(e) => e.stopPropagation()}>
+        <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
           <button style={styles.closeBtn} onClick={onClose}><X size={18} /></button>
           <button style={styles.backBtn} onClick={() => setMapPhylum(null)}><ArrowLeft size={15} /> All achievements</button>
           <div style={styles.modalTitle}>{phylum.name}</div>
@@ -535,28 +847,24 @@ function AchievementsModal({ styles, t, phylumStats, mapPhylum, setMapPhylum, al
             <div style={{ ...styles.progressFill, width: `${pct}%` }} />
           </div>
           <div style={styles.progressLabel}>{found} / {species.length} discovered — {pct}%</div>
-          {cartoon ? (
-            <TreasureMapView styles={styles} species={species} records={records} PlaceholderIcon={PlaceholderIcon} />
-          ) : (
-            <div style={styles.mapGrid}>
-              {species.map((s) => {
-                const rec = records[s.id];
-                const thumb = rec?.photos?.[0];
-                return (
-                  <div key={s.id} style={styles.mapTile} title={rec?.found ? s.name : "Not yet found"}>
-                    <div style={{ ...styles.mapCircle, ...(rec?.found ? styles.mapCircleFound : styles.mapCircleLocked) }}>
-                      {rec?.found ? (
-                        thumb ? <img src={thumb} style={styles.rowThumbImg} alt="" /> : <PlaceholderIcon style={styles.mapCircleIcon} />
-                      ) : (
-                        <PlaceholderIcon style={styles.mapCircleIconLocked} />
-                      )}
-                    </div>
-                    {rec?.found && <div style={styles.mapTileName}>{s.name}</div>}
+          <div style={styles.mapGrid}>
+            {species.map((s) => {
+              const rec = records[s.id];
+              const thumb = rec?.photos?.[0];
+              return (
+                <div key={s.id} style={styles.mapTile} title={rec?.found ? s.name : "Not yet found"}>
+                  <div style={{ ...styles.mapCircle, ...(rec?.found ? styles.mapCircleFound : styles.mapCircleLocked) }}>
+                    {rec?.found ? (
+                      thumb ? <img src={thumb} style={styles.rowThumbImg} alt="" /> : <PlaceholderIcon style={styles.mapCircleIcon} />
+                    ) : (
+                      <PlaceholderIcon style={styles.mapCircleIconLocked} />
+                    )}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  {rec?.found && <div style={styles.mapTileName}>{s.name}</div>}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
@@ -572,7 +880,7 @@ function AchievementsModal({ styles, t, phylumStats, mapPhylum, setMapPhylum, al
         <div style={styles.legendRow}>
           {TIER_THRESHOLDS.map((tt) => (
             <div key={tt.tier} style={styles.legendItem}>
-              <MedalBadge tier={tt.tier} size={26} t={t} />
+              <MedalBadge tier={tt.tier} size={26} />
               <div>
                 <div style={styles.legendLabel}>{tt.label}</div>
                 <div style={styles.legendDesc}>{tt.desc}</div>
@@ -584,7 +892,7 @@ function AchievementsModal({ styles, t, phylumStats, mapPhylum, setMapPhylum, al
         <div style={{ marginTop: 14 }}>
           {phylumStats.map((p) => (
             <button key={p.id} style={styles.achievementRow} onClick={() => setMapPhylum(p.id)}>
-              <MedalBadge tier={p.tier} size={40} t={t} />
+              <MedalBadge tier={p.tier} size={40} />
               <div style={{ flex: 1, textAlign: "left" }}>
                 <div style={styles.achievementName}>{p.name}</div>
                 <div style={styles.achievementSub}>{p.found} / {p.total} found</div>
@@ -598,76 +906,21 @@ function AchievementsModal({ styles, t, phylumStats, mapPhylum, setMapPhylum, al
 }
 
 /* ---------------------------------------------------------
-   Treasure map — cartoon-theme achievement view
---------------------------------------------------------- */
-const MAP_POSITIONS = [
-  [15, 22], [36, 12], [58, 20], [78, 14], [90, 32],
-  [10, 48], [30, 58], [50, 42], [68, 52], [86, 46],
-  [18, 72], [40, 80], [60, 68], [78, 82], [92, 66],
-  [26, 90], [50, 88], [72, 92], [8, 90], [95, 88],
-];
-
-function CompassRose(props) {
-  return (
-    <svg viewBox="0 0 60 60" {...props}>
-      <circle cx="30" cy="30" r="25" fill="none" stroke="#8B5A2B" strokeWidth="1.5" />
-      <path d="M30 7l4 19-4 4-4-4z" fill="#8B5A2B" />
-      <path d="M30 53l4-19-4-4-4 4z" fill="#8B5A2B" opacity="0.55" />
-      <path d="M7 30l19-4 4 4-4 4z" fill="#8B5A2B" opacity="0.55" />
-      <path d="M53 30l-19-4-4 4 4 4z" fill="#8B5A2B" opacity="0.55" />
-      <text x="30" y="15" fontSize="7" textAnchor="middle" fill="#8B5A2B" fontWeight="bold">N</text>
-    </svg>
-  );
-}
-
-function TreasureMapView({ styles, species, records, PlaceholderIcon }) {
-  const pts = species.map((s, i) => MAP_POSITIONS[i % MAP_POSITIONS.length]);
-  return (
-    <div style={styles.mapParchment}>
-      <svg style={styles.mapPathSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
-        <polyline
-          points={pts.map(([x, y]) => `${x},${y}`).join(" ")}
-          fill="none" stroke="#8B5A2B" strokeWidth="0.5" strokeDasharray="1.5,2" opacity="0.55"
-        />
-      </svg>
-      {species.map((s, i) => {
-        const [x, y] = MAP_POSITIONS[i % MAP_POSITIONS.length];
-        const rec = records[s.id];
-        const thumb = rec?.photos?.[0];
-        return (
-          <div key={s.id} style={{ ...styles.mapMarker, left: `${x}%`, top: `${y}%` }} title={rec?.found ? s.name : "Not yet found"}>
-            <div style={{ ...styles.mapMarkerCircle, ...(rec?.found ? styles.mapMarkerFound : styles.mapMarkerLocked) }}>
-              {rec?.found
-                ? (thumb ? <img src={thumb} style={styles.rowThumbImg} alt="" /> : <PlaceholderIcon style={styles.mapMarkerIcon} />)
-                : <span style={styles.mapMarkerQ}>?</span>}
-            </div>
-            {rec?.found && <div style={styles.mapMarkerLabel}>{s.name}</div>}
-          </div>
-        );
-      })}
-      <CompassRose style={styles.compassRose} />
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------
    Settings
 --------------------------------------------------------- */
-function SettingsModal({ styles, t, themeName, setThemeName, onClose }) {
+function SettingsModal({ styles, onClose, userEmail, onSignOut }) {
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <button style={styles.closeBtn} onClick={onClose}><X size={18} /></button>
         <div style={styles.modalTitle}>Settings</div>
-        <div style={{ ...styles.fieldLabel, marginTop: 16, marginBottom: 10 }}>Theme</div>
-        <div style={styles.themeGrid}>
-          {Object.entries(THEMES).map(([key, theme]) => (
-            <button key={key} onClick={() => setThemeName(key)} style={{ ...styles.themeCard, ...(themeName === key ? styles.themeCardActive : {}) }}>
-              <div style={{ ...styles.themeSwatch, background: theme.bgIsGradient ? theme.bg : theme.bg }} />
-              <div style={styles.themeCardLabel}>{theme.label}</div>
-              {themeName === key && <Check size={14} style={{ position: "absolute", top: 8, right: 8 }} />}
-            </button>
-          ))}
+        <div style={{ ...styles.hint, marginTop: 12 }}>
+          Theme options are coming back once more species are logged. For now, this is the only look.
+        </div>
+        <div style={{ ...styles.field, marginTop: 20 }}>
+          <span style={styles.fieldLabel}>Signed in as</span>
+          <div style={{ fontSize: 13, color: styles.text, marginBottom: 12 }}>{userEmail}</div>
+          <button style={styles.secondaryBtn} onClick={onSignOut}>Sign Out</button>
         </div>
       </div>
     </div>
@@ -712,8 +965,9 @@ function DetailModal({ styles, t, species, record, onClose, onUpdate, onToggleFo
             {record.photos?.[0] ? <img src={record.photos[0]} style={styles.rowThumbImg} alt="" /> : <PlaceholderIcon style={styles.modalThumbIcon} />}
           </div>
           <div>
-            <div style={styles.modalTitle}>{species.name}</div>
+            <div style={styles.modalTitle}>{species.name}{species.groupName ? <span style={styles.customTag}>{species.groupName}</span> : null}</div>
             <div style={styles.modalLatin}>{species.latin}</div>
+            <RarityTag rarity={species.rarity} styles={styles} />
           </div>
         </div>
         <button style={{ ...styles.foundToggle, ...(record.found ? styles.foundToggleActive : {}) }} onClick={onToggleFound}>
@@ -761,6 +1015,7 @@ function AddSpeciesModal({ styles, defaultPhylum, onClose, onAdd }) {
   const [name, setName] = useState("");
   const [latin, setLatin] = useState("");
   const [phylum, setPhylum] = useState(defaultPhylum);
+  const [rarity, setRarity] = useState("Common");
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -783,7 +1038,16 @@ function AddSpeciesModal({ styles, defaultPhylum, onClose, onAdd }) {
             <ChevronDown size={14} style={styles.selectChevron} />
           </div>
         </label>
-        <button style={styles.primaryBtn} disabled={!name.trim()} onClick={() => onAdd({ name: name.trim(), latin: latin.trim() || "—", phylum })}>
+        <label style={styles.field}>
+          <span style={styles.fieldLabel}>Rarity (your best guess)</span>
+          <div style={{ position: "relative" }}>
+            <select style={styles.select} value={rarity} onChange={(e) => setRarity(e.target.value)}>
+              {RARITY_LEVELS.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <ChevronDown size={14} style={styles.selectChevron} />
+          </div>
+        </label>
+        <button style={styles.primaryBtn} disabled={!name.trim()} onClick={() => onAdd({ name: name.trim(), latin: latin.trim() || "—", phylum, rarity })}>
           Add to my list
         </button>
       </div>
@@ -807,81 +1071,34 @@ function ConfirmModal({ styles, message, onCancel, onConfirm }) {
 }
 
 /* ---------------------------------------------------------
-   Style generator — driven by theme tokens
+   Style generator
 --------------------------------------------------------- */
 function getStyles(t) {
-  const cartoon = t.label === "Cartoon";
-  const woodGrain = "repeating-linear-gradient(180deg, #C68642 0px, #B5701F 5px, #C68642 10px, #A5650F 15px)";
   return {
-    app: cartoon
-      ? {
-          fontFamily: t.bodyFont, background: woodGrain, color: t.text, minHeight: "100%",
-          padding: 16, position: "relative", maxWidth: 720, margin: "0 auto", boxSizing: "border-box",
-          borderRadius: 26, boxShadow: "0 8px 0 rgba(0,0,0,0.2), inset 0 0 0 4px rgba(0,0,0,0.15)",
-        }
-      : {
-          fontFamily: t.bodyFont, background: t.bg, color: t.text, minHeight: "100%",
-          padding: "20px 20px 40px", position: "relative", maxWidth: 720, margin: "0 auto", boxSizing: "border-box",
-        },
-    panel: cartoon
-      ? { background: "#3B2412", border: "2px solid #6B4423", borderRadius: 20, padding: "18px 16px 30px", boxShadow: "inset 0 2px 6px rgba(0,0,0,0.4)" }
-      : {},
-    frameBolt: (corner) => {
-      const pos = {
-        tl: { top: 8, left: 8 }, tr: { top: 8, right: 8 },
-        bl: { bottom: 8, left: 8 }, br: { bottom: 8, right: 8 },
-      }[corner];
-      return {
-        position: "absolute", ...pos, width: 12, height: 12, borderRadius: "50%",
-        background: "radial-gradient(circle at 35% 30%, #DDD, #888 70%, #555)",
-        border: "1px solid #444", zIndex: 2,
-      };
-    },
+    app: { fontFamily: t.bodyFont, background: t.bg, color: t.text, minHeight: "100%", padding: "20px 20px 40px", position: "relative", maxWidth: 720, margin: "0 auto", boxSizing: "border-box" },
+    panel: {},
     header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, gap: 10 },
-    headerCenter: cartoon
-      ? {
-          textAlign: "center", flex: 1, background: "linear-gradient(180deg, #F6D186, #D9A441)",
-          border: "3px solid #8B5A2B", borderRadius: 14, padding: "8px 16px",
-          boxShadow: "0 4px 0 rgba(0,0,0,0.25)",
-        }
-      : { textAlign: "center", flex: 1 },
+    headerCenter: { textAlign: "center", flex: 1 },
     headerRight: { display: "flex", alignItems: "center", gap: 10 },
-    iconBtn: cartoon
-      ? {
-          width: 42, height: 42, borderRadius: "50%", border: "2px solid #8B5A2B",
-          background: "linear-gradient(180deg, #F6D186, #D9A441)", color: "#3B2412",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer", boxShadow: "0 3px 0 rgba(0,0,0,0.25)", flexShrink: 0,
-        }
-      : {
-          width: 40, height: 40, borderRadius: t.radiusPill, border: `${t.borderWidth}px solid ${t.border}`,
-          background: t.panel, color: t.text, display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer", boxShadow: t.buttonShadow, flexShrink: 0,
-        },
-    eyebrow: { fontFamily: t.monoFont, fontSize: cartoon ? 9.5 : 10.5, letterSpacing: t.letterSpacing || "0.18em", color: cartoon ? "#6B4423" : t.accent, marginBottom: 2, fontWeight: cartoon ? 700 : 400 },
-    title: { fontFamily: t.headingFont, fontSize: cartoon ? 26 : 32, fontWeight: cartoon ? 700 : 600, margin: 0, color: cartoon ? "#3B2412" : t.text },
-    stamp: {
-      border: `${t.borderWidth + 0.5}px solid ${t.border}`, borderRadius: "50%", width: 54, height: 54,
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      transform: cartoon ? "none" : "rotate(-6deg)", flexShrink: 0, background: t.panel,
-    },
+    iconBtn: { width: 40, height: 40, borderRadius: t.radiusPill, border: `${t.borderWidth}px solid ${t.border}`, background: t.panel, color: t.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: t.buttonShadow, flexShrink: 0 },
+    eyebrow: { fontFamily: t.monoFont, fontSize: 10.5, letterSpacing: t.letterSpacing || "0.18em", color: t.accent, marginBottom: 2 },
+    title: { fontFamily: t.headingFont, fontSize: 32, fontWeight: 600, margin: 0, color: t.text },
+    stampGroup: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3 },
+    stamp: { border: `${t.borderWidth + 0.5}px solid ${t.border}`, borderRadius: "50%", width: 54, height: 54, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", transform: "rotate(-6deg)", flexShrink: 0, background: t.panel },
     stampCount: { fontFamily: t.monoFont, fontSize: 15, lineHeight: 1, color: t.coral, fontWeight: 700 },
     stampTotal: { fontFamily: t.monoFont, fontSize: 8.5, color: t.textDim },
+    stampCaption: { fontFamily: t.monoFont, fontSize: 7.5, letterSpacing: "0.06em", color: t.textDim, textAlign: "center", lineHeight: 1.2 },
 
     regionTabs: { display: "flex", gap: 8, overflowX: "auto", marginBottom: 12, paddingBottom: 2 },
     regionTab: { background: t.panel, border: `${t.borderWidth}px solid ${t.border}`, borderRadius: t.radius, padding: "8px 14px", cursor: "pointer", textAlign: "left", flexShrink: 0, boxShadow: t.shadow },
-    regionTabActive: { borderColor: t.coral, background: cartoon ? t.panelAlt : "rgba(228,87,46,0.12)" },
-    regionTabName: { fontSize: 13.5, fontWeight: cartoon ? 700 : 500, color: t.text, fontFamily: cartoon ? t.headingFont : t.bodyFont },
+    regionTabActive: { borderColor: t.coral, background: "rgba(228,87,46,0.12)" },
+    regionTabName: { fontSize: 13.5, fontWeight: 500, color: t.text },
     regionTabSub: { fontFamily: t.monoFont, fontSize: 9.5, color: t.textDim, marginTop: 1 },
     regionTabGhost: { display: "flex", alignItems: "center", gap: 5, background: "transparent", border: `${t.borderWidth}px dashed ${t.border}`, borderRadius: t.radius, padding: "8px 14px", color: t.textDim, fontSize: 12, flexShrink: 0, cursor: "not-allowed" },
 
-    phylumTabs: { display: "flex", gap: cartoon ? 8 : 6, overflowX: "auto", marginBottom: 16, paddingBottom: 4 },
-    phylumTab: cartoon
-      ? { fontFamily: t.headingFont, fontSize: 12.5, color: t.textDim, background: t.panel, border: `${t.borderWidth}px solid ${t.border}`, borderRadius: t.radiusPill, padding: "7px 14px", cursor: "pointer", whiteSpace: "nowrap", boxShadow: t.shadow }
-      : { fontFamily: t.monoFont, fontSize: 11, letterSpacing: "0.02em", color: t.textDim, background: "transparent", border: "none", borderBottom: "2px solid transparent", padding: "4px 2px", cursor: "pointer", whiteSpace: "nowrap", marginRight: 12 },
-    phylumTabActive: cartoon
-      ? { color: t.panel, background: t.accent, borderColor: t.accent }
-      : { color: t.coral, borderBottomColor: t.coral },
+    phylumTabs: { display: "flex", gap: 6, overflowX: "auto", marginBottom: 16, paddingBottom: 4 },
+    phylumTab: { fontFamily: t.monoFont, fontSize: 11, letterSpacing: "0.02em", color: t.textDim, background: "transparent", border: "none", borderBottom: "2px solid transparent", padding: "4px 2px", cursor: "pointer", whiteSpace: "nowrap", marginRight: 12 },
+    phylumTabActive: { color: t.coral, borderBottomColor: t.coral },
 
     toolbar: { display: "flex", gap: 10, marginBottom: 14 },
     searchBox: { flex: 1, display: "flex", alignItems: "center", gap: 8, background: t.panel, border: `${t.borderWidth}px solid ${t.border}`, borderRadius: t.radius, padding: "9px 12px" },
@@ -890,15 +1107,16 @@ function getStyles(t) {
     toggleChipActive: { background: t.accent, color: t.panel, borderColor: t.accent },
 
     list: {},
-    row: { display: "flex", alignItems: "center", gap: 12, padding: cartoon ? "10px 10px" : "10px 2px", cursor: "pointer", borderBottom: cartoon ? "none" : `1px dotted rgba(143,191,174,0.18)`, background: cartoon ? t.panel : "transparent", borderRadius: cartoon ? t.radius : 0, marginBottom: cartoon ? 8 : 0, border: cartoon ? `${t.borderWidth}px solid ${t.border}` : "none", boxShadow: cartoon ? t.shadow : "none" },
+    row: { display: "flex", alignItems: "center", gap: 12, padding: "10px 2px", cursor: "pointer", borderBottom: `1px dotted rgba(143,191,174,0.18)` },
     stampButton: { width: 24, height: 24, borderRadius: "50%", border: `${t.borderWidth + 0.5}px solid ${t.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: t.panel, cursor: "pointer", background: t.panel },
-    stampButtonActive: { background: t.coral, borderColor: t.coral, color: "#fff", transform: cartoon ? "none" : "rotate(-8deg)" },
+    stampButtonActive: { background: t.coral, borderColor: t.coral, color: "#fff", transform: "rotate(-8deg)" },
     rowText: { minWidth: 0, flex: 1 },
-    rowName: { fontSize: 14.5, fontWeight: cartoon ? 700 : 500, color: t.text, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontFamily: cartoon ? t.headingFont : t.bodyFont },
+    rowName: { fontSize: 14.5, fontWeight: 500, color: t.text, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" },
     customTag: { fontFamily: t.monoFont, fontSize: 8.5, color: t.textDim, border: `1px solid ${t.border}`, borderRadius: 4, padding: "1px 4px" },
-    rowLatin: { fontSize: 11, fontStyle: cartoon ? "normal" : "italic", color: t.textDim },
+    rarityTag: { fontFamily: t.monoFont, fontSize: 8.5, borderRadius: 4, padding: "1px 5px", fontWeight: 600 },
+    rowLatin: { fontSize: 11, fontStyle: "italic", color: t.textDim },
     metaDate: { fontFamily: t.monoFont, fontSize: 10, color: t.textDim, marginTop: 2 },
-    rowThumb: { width: 46, height: 46, borderRadius: cartoon ? "50%" : 8, border: `${t.borderWidth}px solid ${t.border}`, background: t.panelAlt, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" },
+    rowThumb: { width: 46, height: 46, borderRadius: 8, border: `${t.borderWidth}px solid ${t.border}`, background: t.panelAlt, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" },
     rowThumbImg: { width: "100%", height: "100%", objectFit: "cover" },
     rowThumbIcon: { width: 26, height: 26, color: t.textDim },
 
@@ -909,21 +1127,14 @@ function getStyles(t) {
     saveError: { color: t.coral, fontSize: 11.5 },
 
     overlay: { position: "fixed", inset: 0, background: "rgba(10,20,20,0.7)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50 },
-    modal: { background: t.bgIsGradient ? t.panel : t.bg, border: `${t.borderWidth}px solid ${t.border}`, borderBottom: "none", borderRadius: `${t.radiusLg}px ${t.radiusLg}px 0 0`, padding: "22px 20px 28px", width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", position: "relative", boxSizing: "border-box" },
-    closeBtn: cartoon
-      ? {
-          position: "absolute", top: -12, right: -12, width: 32, height: 32, borderRadius: "50%",
-          background: "radial-gradient(circle at 35% 30%, #FF7A7A, #D93B3B 70%, #A82424)",
-          border: "2px solid #7A1A1A", color: "#fff", cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 3px 0 rgba(0,0,0,0.3)",
-        }
-      : { position: "absolute", top: 16, right: 16, background: "transparent", border: "none", color: t.textDim, cursor: "pointer" },
+    modal: { background: t.bg, border: `${t.borderWidth}px solid ${t.border}`, borderBottom: "none", borderRadius: `${t.radiusLg}px ${t.radiusLg}px 0 0`, padding: "22px 20px 28px", width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", position: "relative", boxSizing: "border-box" },
+    closeBtn: { position: "absolute", top: 16, right: 16, background: "transparent", border: "none", color: t.textDim, cursor: "pointer" },
     backBtn: { display: "flex", alignItems: "center", gap: 5, background: "transparent", border: "none", color: t.accent, fontSize: 12.5, cursor: "pointer", marginBottom: 10, padding: 0 },
     modalHeader: { display: "flex", alignItems: "center", gap: 12, marginBottom: 16 },
-    modalThumb: { width: 52, height: 52, borderRadius: cartoon ? "50%" : 10, border: `${t.borderWidth}px solid ${t.border}`, background: t.panelAlt, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" },
+    modalThumb: { width: 52, height: 52, borderRadius: 10, border: `${t.borderWidth}px solid ${t.border}`, background: t.panelAlt, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" },
     modalThumbIcon: { width: 30, height: 30, color: t.textDim },
-    modalTitle: { fontFamily: t.headingFont, fontSize: 20, fontWeight: cartoon ? 700 : 600, color: t.text },
-    modalLatin: { fontSize: 12, fontStyle: cartoon ? "normal" : "italic", color: t.textDim },
+    modalTitle: { fontFamily: t.headingFont, fontSize: 20, fontWeight: 600, color: t.text, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+    modalLatin: { fontSize: 12, fontStyle: "italic", color: t.textDim, marginTop: 2 },
     foundToggle: { display: "flex", alignItems: "center", gap: 9, background: t.panel, border: `${t.borderWidth}px solid ${t.border}`, borderRadius: t.radius, padding: "10px 14px", color: t.text, fontSize: 13.5, cursor: "pointer", width: "100%", marginBottom: 16, boxShadow: t.shadow },
     foundToggleActive: { borderColor: t.coral },
     field: { display: "block", marginBottom: 16 },
@@ -934,21 +1145,21 @@ function getStyles(t) {
     textarea: { width: "100%", minHeight: 64, background: t.panel, border: `${t.borderWidth}px solid ${t.border}`, borderRadius: t.radius - 1, padding: "9px 11px", color: t.text, fontSize: 13.5, fontFamily: t.bodyFont, boxSizing: "border-box", outline: "none", resize: "vertical" },
     photoGrid: { display: "flex", flexWrap: "wrap", gap: 8 },
     photoThumbWrap: { position: "relative", width: 68, height: 68 },
-    photoThumb: { width: "100%", height: "100%", objectFit: "cover", borderRadius: cartoon ? "50%" : 6, border: `${t.borderWidth}px solid ${t.border}` },
+    photoThumb: { width: "100%", height: "100%", objectFit: "cover", borderRadius: 6, border: `${t.borderWidth}px solid ${t.border}` },
     photoRemove: { position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", background: t.coral, color: "#fff", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
-    photoAdd: { width: 68, height: 68, borderRadius: cartoon ? "50%" : 6, border: `${t.borderWidth}px dashed ${t.border}`, background: "transparent", color: t.accent, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, cursor: "pointer" },
+    photoAdd: { width: 68, height: 68, borderRadius: 6, border: `${t.borderWidth}px dashed ${t.border}`, background: "transparent", color: t.accent, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, cursor: "pointer" },
     hint: { fontSize: 11, color: t.textDim, lineHeight: 1.5, marginTop: 8 },
     deleteRow: { display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: "#C97A63", fontSize: 12.5, cursor: "pointer", marginTop: 6 },
-    primaryBtn: { width: "100%", background: t.coral, color: "#fff", border: "none", borderRadius: t.radiusPill === 999 ? 20 : t.radius, padding: "11px 14px", fontSize: 14, fontWeight: cartoon ? 700 : 500, cursor: "pointer", fontFamily: t.bodyFont, boxShadow: t.buttonShadow },
-    secondaryBtn: { flex: 1, background: t.panel, color: t.accent, border: `${t.borderWidth}px solid ${t.border}`, borderRadius: t.radiusPill === 999 ? 20 : t.radius, padding: "11px 14px", fontSize: 14, cursor: "pointer", fontFamily: t.bodyFont },
+    primaryBtn: { width: "100%", background: t.coral, color: "#fff", border: "none", borderRadius: t.radius, padding: "11px 14px", fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: t.bodyFont },
+    secondaryBtn: { flex: 1, background: t.panel, color: t.accent, border: `${t.borderWidth}px solid ${t.border}`, borderRadius: t.radius, padding: "11px 14px", fontSize: 14, cursor: "pointer", fontFamily: t.bodyFont },
 
     achievementRow: { display: "flex", alignItems: "center", gap: 14, width: "100%", background: t.panel, border: `${t.borderWidth}px solid ${t.border}`, borderRadius: t.radius, padding: "10px 14px", cursor: "pointer", marginBottom: 10, boxShadow: t.shadow },
-    achievementName: { fontSize: 14, fontWeight: cartoon ? 700 : 500, color: t.text, fontFamily: cartoon ? t.headingFont : t.bodyFont },
+    achievementName: { fontSize: 14, fontWeight: 500, color: t.text },
     achievementSub: { fontSize: 11.5, color: t.textDim, marginTop: 2, fontFamily: t.monoFont },
 
     legendRow: { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 14, padding: "10px 12px", background: t.panelAlt, border: `1px solid ${t.border}`, borderRadius: t.radius },
     legendItem: { display: "flex", alignItems: "center", gap: 6, minWidth: 110 },
-    legendLabel: { fontSize: 11, fontWeight: cartoon ? 700 : 600, color: t.text, fontFamily: cartoon ? t.headingFont : t.bodyFont },
+    legendLabel: { fontSize: 11, fontWeight: 600, color: t.text },
     legendDesc: { fontSize: 9.5, color: t.textDim, fontFamily: t.monoFont },
 
     progressTrack: { width: "100%", height: 10, borderRadius: 999, background: t.panelAlt, border: `1px solid ${t.border}`, overflow: "hidden", marginTop: 6 },
@@ -963,26 +1174,5 @@ function getStyles(t) {
     mapCircleIcon: { width: 28, height: 28, color: t.accent },
     mapCircleIconLocked: { width: 24, height: 24, color: "#2a2a2a" },
     mapTileName: { fontSize: 8.5, color: t.textDim, textAlign: "center", lineHeight: 1.2 },
-
-    mapParchment: {
-      position: "relative", width: "100%", minHeight: 320, boxSizing: "border-box",
-      background: "radial-gradient(circle at 20% 25%, rgba(139,90,43,0.18), transparent 55%), radial-gradient(circle at 82% 72%, rgba(139,90,43,0.16), transparent 50%), #EBD8AE",
-      border: "3px solid #8B5A2B", borderRadius: "60px 14px 60px 14px", padding: 16, overflow: "hidden",
-    },
-    mapPathSvg: { position: "absolute", inset: 0, width: "100%", height: "100%", zIndex: 0 },
-    mapMarker: { position: "absolute", transform: "translate(-50%, -50%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, zIndex: 1 },
-    mapMarkerCircle: { width: 34, height: 34, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #6B4423", overflow: "hidden" },
-    mapMarkerFound: { background: "#F6D186" },
-    mapMarkerLocked: { background: "rgba(107,68,35,0.2)", borderStyle: "dashed" },
-    mapMarkerIcon: { width: 18, height: 18, color: "#6B4423" },
-    mapMarkerQ: { fontSize: 14, color: "#6B4423", fontWeight: 700 },
-    mapMarkerLabel: { fontSize: 7.5, color: "#4A2E12", textAlign: "center", maxWidth: 62, lineHeight: 1.15, background: "rgba(235,216,174,0.9)", padding: "1px 3px", borderRadius: 4 },
-    compassRose: { position: "absolute", bottom: 10, right: 10, width: 44, height: 44, opacity: 0.7 },
-
-    themeGrid: { display: "flex", gap: 12 },
-    themeCard: { position: "relative", flex: 1, background: t.panel, border: `${t.borderWidth}px solid ${t.border}`, borderRadius: t.radius, padding: 10, cursor: "pointer", color: t.text },
-    themeCardActive: { borderColor: t.coral, borderWidth: 2 },
-    themeSwatch: { width: "100%", height: 50, borderRadius: t.radius - 2, marginBottom: 8 },
-    themeCardLabel: { fontSize: 13, fontWeight: 600, textAlign: "center" },
   };
 }
