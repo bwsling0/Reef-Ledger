@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
 import { db } from "./firebase";
 import {
   Search, X, Plus, Camera, Calendar, Trash2, ChevronDown,
@@ -428,6 +428,31 @@ const DEFAULT_SPECIES = [
 const STORAGE_KEY = "reef-ledger-data";
 
 /* ---------------------------------------------------------
+   Reference photos — optional, keyed by exact species name.
+   Add one entry per species as you find a suitable photo on
+   Wikimedia Commons (or another source with a clear license).
+   `url` should be the direct image file link (the "Original
+   file" link on the Commons file page, ending in .jpg/.png),
+   not the page you view it on.
+
+   Example:
+   "Atlantic Cod": {
+     url: "https://upload.wikimedia.org/wikipedia/commons/x/xx/Example.jpg",
+     author: "Jane Diver",
+     license: "CC BY-SA 4.0",
+     licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",
+     sourceUrl: "https://commons.wikimedia.org/wiki/File:Example.jpg",
+   },
+--------------------------------------------------------- */
+// Only this Firebase user can add/edit the shared default species photos.
+// Replace with your actual UID from Firebase console → Authentication → Users.
+const ADMIN_UID = "6t0yOgtzKkTEzJwV8xneI6cy1Cl1";
+
+const PHOTO_CREDITS = {
+  // add entries here
+};
+
+/* ---------------------------------------------------------
    Placeholder silhouette icons per phylum
 --------------------------------------------------------- */
 function FishIcon(props) {
@@ -588,6 +613,7 @@ export default function ReefLedger({ user, onSignOut }) {
   const [themeName] = useState("real");
   const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [sharedPhotos, setSharedPhotos] = useState({});
 
   const [selectedRegion, setSelectedRegion] = useState(REGIONS[0].id);
   const [selectedPhylum, setSelectedPhylum] = useState("all");
@@ -623,6 +649,19 @@ export default function ReefLedger({ user, onSignOut }) {
       }
     })();
   }, [user.uid]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, "speciesPhotos"));
+        const map = {};
+        snap.forEach((d) => { map[d.id] = d.data(); });
+        setSharedPhotos(map);
+      } catch (err) {
+        // shared photo library is optional — fail quietly
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (!loaded) return;
@@ -757,7 +796,8 @@ export default function ReefLedger({ user, onSignOut }) {
 
           const rec = records[s.id];
           const isCustom = s.id.startsWith("c");
-          const thumb = rec?.photos?.[0];
+          const credit = sharedPhotos[slug(s.name)] || PHOTO_CREDITS[s.name];
+          const thumb = rec?.photos?.[0] || credit?.url;
           return (
             <div key={s.id} style={styles.row} onClick={() => setSelectedId(s.id)}>
               <div style={{ ...styles.stampButton, ...(rec?.found ? styles.stampButtonActive : {}) }} onClick={(e) => { e.stopPropagation(); toggleFound(s.id); }}>
@@ -797,6 +837,13 @@ export default function ReefLedger({ user, onSignOut }) {
           onUpdate={(patch) => updateRecord(selected.id, patch)}
           onToggleFound={() => toggleFound(selected.id)}
           onDeleteCustom={selected.id.startsWith("c") ? () => removeCustomSpecies(selected.id) : null}
+          sharedPhotos={sharedPhotos}
+          isAdmin={user.uid === ADMIN_UID}
+          onSaveSharedPhoto={async (name, data) => {
+            const key = slug(name);
+            await setDoc(doc(db, "speciesPhotos", key), { name, ...data });
+            setSharedPhotos((prev) => ({ ...prev, [key]: { name, ...data } }));
+          }}
         />
       )}
 
@@ -930,11 +977,33 @@ function SettingsModal({ styles, onClose, userEmail, onSignOut }) {
 /* ---------------------------------------------------------
    Detail modal
 --------------------------------------------------------- */
-function DetailModal({ styles, t, species, record, onClose, onUpdate, onToggleFound, onDeleteCustom }) {
+function DetailModal({ styles, t, species, record, onClose, onUpdate, onToggleFound, onDeleteCustom, sharedPhotos, onSaveSharedPhoto, isAdmin }) {
   const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [editingDefault, setEditingDefault] = useState(false);
+  const [savingDefault, setSavingDefault] = useState(false);
   const PlaceholderIcon = PHYLUM_ICON[species.phylum] || FishIcon;
+  const credit = sharedPhotos[slug(species.name)] || PHOTO_CREDITS[species.name];
+  const headerPhoto = record.photos?.[0] || credit?.url;
+
+  const [form, setForm] = useState({
+    url: credit?.url || "", author: credit?.author || "",
+    license: credit?.license || "", licenseUrl: credit?.licenseUrl || "",
+    sourceUrl: credit?.sourceUrl || "",
+  });
+
+  async function handleSaveDefault() {
+    setSavingDefault(true);
+    try {
+      await onSaveSharedPhoto(species.name, form);
+      setEditingDefault(false);
+    } catch (e) {
+      // leave the form open so they can retry
+    } finally {
+      setSavingDefault(false);
+    }
+  }
 
   async function handlePhotoSelect(e) {
     const files = Array.from(e.target.files || []);
@@ -962,7 +1031,7 @@ function DetailModal({ styles, t, species, record, onClose, onUpdate, onToggleFo
         <button style={styles.closeBtn} onClick={onClose}><X size={18} /></button>
         <div style={styles.modalHeader}>
           <div style={styles.modalThumb}>
-            {record.photos?.[0] ? <img src={record.photos[0]} style={styles.rowThumbImg} alt="" /> : <PlaceholderIcon style={styles.modalThumbIcon} />}
+            {headerPhoto ? <img src={headerPhoto} style={styles.rowThumbImg} alt="" /> : <PlaceholderIcon style={styles.modalThumbIcon} />}
           </div>
           <div>
             <div style={styles.modalTitle}>{species.name}{species.groupName ? <span style={styles.customTag}>{species.groupName}</span> : null}</div>
@@ -970,6 +1039,50 @@ function DetailModal({ styles, t, species, record, onClose, onUpdate, onToggleFo
             <RarityTag rarity={species.rarity} styles={styles} />
           </div>
         </div>
+        {!record.photos?.[0] && credit && !editingDefault && (
+          <div style={styles.creditLine}>
+            Reference photo: {credit.author ? `${credit.author}, ` : ""}
+            <a href={credit.sourceUrl} target="_blank" rel="noopener noreferrer" style={styles.creditLink}>source</a>
+            {" · "}
+            <a href={credit.licenseUrl} target="_blank" rel="noopener noreferrer" style={styles.creditLink}>{credit.license}</a>
+          </div>
+        )}
+
+        {isAdmin && (!editingDefault ? (
+          <button style={styles.editDefaultLink} onClick={() => setEditingDefault(true)}>
+            {credit ? "Edit default photo" : "Set a default photo (visible to everyone)"}
+          </button>
+        ) : (
+          <div style={styles.defaultPhotoForm}>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Image URL</span>
+              <input style={styles.dateInput} value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="Direct image link (ends in .jpg/.png)" />
+            </label>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Author</span>
+              <input style={styles.dateInput} value={form.author} onChange={(e) => setForm({ ...form, author: e.target.value })} placeholder="Photographer name" />
+            </label>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>License</span>
+              <input style={styles.dateInput} value={form.license} onChange={(e) => setForm({ ...form, license: e.target.value })} placeholder="e.g. CC BY-SA 4.0" />
+            </label>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>License URL</span>
+              <input style={styles.dateInput} value={form.licenseUrl} onChange={(e) => setForm({ ...form, licenseUrl: e.target.value })} placeholder="Link to license text" />
+            </label>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Source page URL</span>
+              <input style={styles.dateInput} value={form.sourceUrl} onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })} placeholder="Commons file page link" />
+            </label>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button style={styles.secondaryBtn} onClick={() => setEditingDefault(false)}>Cancel</button>
+              <button style={styles.primaryBtn} disabled={!form.url.trim() || savingDefault} onClick={handleSaveDefault}>
+                {savingDefault ? "Saving…" : "Save default photo"}
+              </button>
+            </div>
+            <div style={styles.hint}>This photo and credit will show for every user until someone edits it again.</div>
+          </div>
+        ))}
         <button style={{ ...styles.foundToggle, ...(record.found ? styles.foundToggleActive : {}) }} onClick={onToggleFound}>
           <div style={{ ...styles.stampButton, ...(record.found ? styles.stampButtonActive : {}), width: 22, height: 22 }}>
             {record.found ? <Check size={14} strokeWidth={3} /> : null}
@@ -1135,6 +1248,10 @@ function getStyles(t) {
     modalThumbIcon: { width: 30, height: 30, color: t.textDim },
     modalTitle: { fontFamily: t.headingFont, fontSize: 20, fontWeight: 600, color: t.text, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
     modalLatin: { fontSize: 12, fontStyle: "italic", color: t.textDim, marginTop: 2 },
+    creditLine: { fontSize: 10.5, color: t.textDim, marginBottom: 14, lineHeight: 1.5 },
+    editDefaultLink: { background: "transparent", border: "none", color: t.accent, fontSize: 11.5, cursor: "pointer", padding: 0, marginBottom: 16, textDecoration: "underline" },
+    defaultPhotoForm: { background: t.panel, border: `${t.borderWidth}px solid ${t.border}`, borderRadius: t.radius, padding: 14, marginBottom: 16 },
+    creditLink: { color: t.accent, textDecoration: "underline" },
     foundToggle: { display: "flex", alignItems: "center", gap: 9, background: t.panel, border: `${t.borderWidth}px solid ${t.border}`, borderRadius: t.radius, padding: "10px 14px", color: t.text, fontSize: 13.5, cursor: "pointer", width: "100%", marginBottom: 16, boxShadow: t.shadow },
     foundToggleActive: { borderColor: t.coral },
     field: { display: "block", marginBottom: 16 },
