@@ -620,6 +620,7 @@ export default function ReefLedger({ user, onSignOut }) {
   const [search, setSearch] = useState("");
   const [foundOnly, setFoundOnly] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
@@ -812,7 +813,10 @@ export default function ReefLedger({ user, onSignOut }) {
                 <div style={styles.rowLatin}>{s.latin}</div>
                 {rec?.found && rec?.date && <div style={styles.metaDate}>{rec.date}</div>}
               </div>
-              <div style={styles.rowThumb}>
+              <div
+                style={styles.rowThumb}
+                onClick={(e) => { if (thumb) { e.stopPropagation(); setLightbox({ url: thumb, credit }); } }}
+              >
                 {thumb ? <img src={thumb} style={styles.rowThumbImg} alt="" /> : <PlaceholderIcon style={styles.rowThumbIcon} />}
               </div>
             </div>
@@ -828,6 +832,10 @@ export default function ReefLedger({ user, onSignOut }) {
       </main>
 
       </div>
+
+      {lightbox && (
+        <Lightbox styles={styles} url={lightbox.url} credit={lightbox.credit} onClose={() => setLightbox(null)} />
+      )}
 
       {selected && (
         <DetailModal
@@ -1168,6 +1176,23 @@ function AddSpeciesModal({ styles, defaultPhylum, onClose, onAdd }) {
   );
 }
 
+function Lightbox({ styles, url, credit, onClose }) {
+  return (
+    <div style={styles.lightboxOverlay} onClick={onClose}>
+      <button style={styles.lightboxClose} onClick={onClose}><X size={22} /></button>
+      <img src={url} style={styles.lightboxImg} alt="" onClick={(e) => e.stopPropagation()} />
+      {credit && (
+        <div style={styles.lightboxCredit} onClick={(e) => e.stopPropagation()}>
+          {credit.author ? `${credit.author}, ` : ""}
+          <a href={credit.sourceUrl} target="_blank" rel="noopener noreferrer" style={styles.creditLink}>source</a>
+          {" · "}
+          <a href={credit.licenseUrl} target="_blank" rel="noopener noreferrer" style={styles.creditLink}>{credit.license}</a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConfirmModal({ styles, message, onCancel, onConfirm }) {
   return (
     <div style={styles.overlay} onClick={onCancel}>
@@ -1229,7 +1254,7 @@ function getStyles(t) {
     rarityTag: { fontFamily: t.monoFont, fontSize: 8.5, borderRadius: 4, padding: "1px 5px", fontWeight: 600 },
     rowLatin: { fontSize: 11, fontStyle: "italic", color: t.textDim },
     metaDate: { fontFamily: t.monoFont, fontSize: 10, color: t.textDim, marginTop: 2 },
-    rowThumb: { width: 46, height: 46, borderRadius: 8, border: `${t.borderWidth}px solid ${t.border}`, background: t.panelAlt, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" },
+    rowThumb: { width: 46, height: 46, borderRadius: 8, border: `${t.borderWidth}px solid ${t.border}`, background: t.panelAlt, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden", cursor: "zoom-in" },
     rowThumbImg: { width: "100%", height: "100%", objectFit: "cover" },
     rowThumbIcon: { width: 26, height: 26, color: t.textDim },
 
@@ -1249,6 +1274,10 @@ function getStyles(t) {
     modalTitle: { fontFamily: t.headingFont, fontSize: 20, fontWeight: 600, color: t.text, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
     modalLatin: { fontSize: 12, fontStyle: "italic", color: t.textDim, marginTop: 2 },
     creditLine: { fontSize: 10.5, color: t.textDim, marginBottom: 14, lineHeight: 1.5 },
+    lightboxOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24, boxSizing: "border-box", cursor: "zoom-out" },
+    lightboxClose: { position: "absolute", top: 20, right: 20, background: "rgba(255,255,255,0.1)", border: "none", borderRadius: "50%", width: 40, height: 40, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" },
+    lightboxImg: { maxWidth: "100%", maxHeight: "80vh", borderRadius: 8, cursor: "default", boxShadow: "0 10px 40px rgba(0,0,0,0.5)" },
+    lightboxCredit: { color: "#EAE3D2", fontSize: 12, marginTop: 14, textAlign: "center", cursor: "default" },
     editDefaultLink: { background: "transparent", border: "none", color: t.accent, fontSize: 11.5, cursor: "pointer", padding: 0, marginBottom: 16, textDecoration: "underline" },
     defaultPhotoForm: { background: t.panel, border: `${t.borderWidth}px solid ${t.border}`, borderRadius: t.radius, padding: 14, marginBottom: 16 },
     creditLink: { color: t.accent, textDecoration: "underline" },
