@@ -15,6 +15,7 @@ const REGIONS = [
 
 const PHYLA = [
   { id: "fish-vertebrates", name: "Fish & Vertebrates" },
+  { id: "tunicates", name: "Tunicates" },
   { id: "mollusks", name: "Mollusks" },
   { id: "crustaceans", name: "Crustaceans & Arthropods" },
   { id: "echinoderms", name: "Echinoderms" },
@@ -59,20 +60,6 @@ const FISH_VERTEBRATES = [
   ["Humpback Whale", "Megaptera novaeangliae", "Uncommon"],
   ["North Atlantic Right Whale", "Eubalaena glacialis", "Very Rare"],
   ["Loggerhead Sea Turtle", "Caretta caretta", "Rare"],
-  ["Northern White Crust", "Aplidium pallidum", "Uncommon"],
-  ["Tunicate (Molgula citrina)", "Molgula citrina", "Common"],
-  ["Sea Grape", "Molgula manhattensis", "Common"],
-  ["Tunicate (Didemnum vexillum)", "Didemnum vexillum", "Common"],
-  ["Pink Sea Pork", "Aplidium pellucidum", "Uncommon"],
-  ["Stalked Tunicate", "Boltenia ovifera", "Uncommon"],
-  ["Sea Peach", "Halocynthia pyriformis", "Uncommon"],
-  ["Sea Vase", "Ciona intestinalis", "Common"],
-  ["Blood Drop Tunicate", "Botryllus schlosseri", "Common"],
-  ["Club Tunicate", "Styela clava", "Common"],
-  ["Orange Sheath Tunicate", "Botrylloides violaceus", "Uncommon"],
-  ["Golden Star Tunicate", "Botryllus schlosseri", "Common"],
-  ["Tunicate (Diplosoma listerianum)", "Diplosoma listerianum", "Uncommon"],
-  ["Appendicularian", "Oikopleura dioica", "Rare"],
   ["Blue Shark", "Prionace glauca", "Uncommon"],
   ["Basking Shark", "Cetorhinus maximus", "Rare"],
   ["Atlantic Torpedo", "Torpedo nobiliana", "Rare"],
@@ -120,6 +107,23 @@ const FISH_VERTEBRATES = [
   ["Gray Triggerfish", "Balistes capriscus", "Uncommon"],
   ["Northern Puffer", "Sphoeroides maculatus", "Common"],
   ["Ocean Sunfish", "Mola mola", "Rare"],
+];
+
+const TUNICATES = [
+  ["Northern White Crust", "Aplidium pallidum", "Uncommon"],
+  ["Tunicate (Molgula citrina)", "Molgula citrina", "Common"],
+  ["Sea Grape", "Molgula manhattensis", "Common"],
+  ["Tunicate (Didemnum vexillum)", "Didemnum vexillum", "Common"],
+  ["Pink Sea Pork", "Aplidium pellucidum", "Uncommon"],
+  ["Stalked Tunicate", "Boltenia ovifera", "Uncommon"],
+  ["Sea Peach", "Halocynthia pyriformis", "Uncommon"],
+  ["Sea Vase", "Ciona intestinalis", "Common"],
+  ["Blood Drop Tunicate", "Botryllus schlosseri", "Common"],
+  ["Club Tunicate", "Styela clava", "Common"],
+  ["Orange Sheath Tunicate", "Botrylloides violaceus", "Uncommon"],
+  ["Golden Star Tunicate", "Botryllus schlosseri", "Common"],
+  ["Tunicate (Diplosoma listerianum)", "Diplosoma listerianum", "Uncommon"],
+  ["Appendicularian", "Oikopleura dioica", "Rare"],
 ];
 
 const CRUSTACEANS = [
@@ -414,6 +418,7 @@ function buildGroups(groups, phylum) {
 
 const DEFAULT_SPECIES = [
   ...buildSingle(FISH_VERTEBRATES, "fish-vertebrates"),
+  ...buildSingle(TUNICATES, "tunicates"),
   ...buildSingle(MOLLUSK_SINGLE, "mollusks"),
   ...buildGroups(MOLLUSK_GROUPS, "mollusks"),
   ...buildSingle(CRUSTACEANS, "crustaceans"),
@@ -506,8 +511,18 @@ function WormIcon(props) {
     </svg>
   );
 }
+function TunicateIcon(props) {
+  return (
+    <svg viewBox="0 0 48 48" {...props}>
+      <path d="M15 10c-5 4-7 10-6 18 1 8 6 12 15 12s14-4 15-12c1-8-1-14-6-18" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M17 10c1-3 3-4 7-4s6 1 7 4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="18" cy="15" r="1.4" fill="currentColor" />
+      <circle cx="30" cy="15" r="1.4" fill="currentColor" />
+    </svg>
+  );
+}
 const PHYLUM_ICON = {
-  "fish-vertebrates": FishIcon, "mollusks": ShellIcon, "crustaceans": CrabIcon,
+  "fish-vertebrates": FishIcon, "tunicates": TunicateIcon, "mollusks": ShellIcon, "crustaceans": CrabIcon,
   "echinoderms": StarIcon, "cnidarians": JellyIcon, "worms-other": WormIcon,
 };
 
