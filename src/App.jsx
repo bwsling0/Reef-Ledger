@@ -150,7 +150,6 @@ const CRUSTACEANS = [
 
 const CRUSTACEAN_GROUPS = [
   { name: "Barnacle", variants: [
-    ["Northern Rock Barnacle", "Semibalanus balanoides", "Common"],
     ["Rough Barnacle", "Balanus crenatus", "Common"],
     ["Ivory Barnacle", "Balanus eburneus", "Uncommon"],
   ]},
