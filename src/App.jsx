@@ -421,6 +421,125 @@ const STORAGE_KEY = "reef-ledger-data";
 // Replace with your actual UID from Firebase console → Authentication → Users.
 const ADMIN_UID = "6t0yOgtzKkTEzJwV8xneI6cy1Cl1";
 
+/* ---------------------------------------------------------
+   Species info — size, where found, and a fun fact.
+   Being filled in a batch at a time; species without an
+   entry here just won't show a description section yet.
+--------------------------------------------------------- */
+const SPECIES_INFO = {
+  "Atlantic Cod": { size: "Up to 6 ft, though most caught today are 2–3 ft", range: "Cold coastal waters from Greenland to Cape Hatteras, usually near the bottom", fact: "Cod can live over 20 years and were once so abundant off New England that early European fishermen said you could walk across the water on their backs." },
+  "Atlantic Mackerel": { size: "10–14 inches", range: "Open coastal waters, Labrador to North Carolina, often in large schools near the surface", fact: "Mackerel swim constantly their whole lives — they have no swim bladder, so stopping means sinking." },
+  "Atlantic Herring": { size: "10–12 inches", range: "Coastal and offshore waters throughout the North Atlantic", fact: "Herring schools can number in the millions and are a keystone food source for whales, seabirds, and larger fish." },
+  "Striped Bass": { size: "Typically 20–40 inches, can exceed 4 ft", range: "Coastal waters and estuaries from the St. Lawrence to Florida", fact: "Stripers migrate hundreds of miles between summer feeding grounds and winter waters, and the same fish often return to the same river to spawn every year." },
+  "Winter Flounder": { size: "12–18 inches", range: "Shallow coastal bays and harbors, Labrador to Georgia", fact: "Like all flatfish, it starts life swimming upright with an eye on each side, then one eye migrates across the head as it settles onto the seafloor." },
+  "Haddock": { size: "Around 20 inches average", range: "Deeper, colder waters of the North Atlantic continental shelf", fact: "Haddock have a distinctive black \"thumbprint\" mark behind the gills, sometimes called the \"Devil's mark\" or \"St. Peter's mark\" in folklore." },
+  "Pollock": { size: "Up to 3 ft", range: "Rocky coastal waters, Labrador to New Jersey", fact: "Unlike cod and haddock, pollock often swim well up in the water column rather than hugging the bottom." },
+  "Atlantic Sturgeon": { size: "Can reach 14 ft and live over 60 years", range: "Coastal rivers and nearshore waters, Canada to Florida", fact: "Sturgeon are living fossils — their body plan has barely changed in over 100 million years, and they're covered in bony plates called scutes instead of scales." },
+  "Bluefin Tuna": { size: "Can exceed 10 ft and 1,000 lbs", range: "Open ocean, ranges the entire North Atlantic", fact: "Bluefin can heat their blood above the surrounding water temperature, letting them hunt in cold water most fish can't tolerate." },
+  "Spiny Dogfish": { size: "2–4 ft", range: "Coastal and shelf waters throughout the North Atlantic", fact: "Named for the mild venomous spine in front of each dorsal fin — and they can live over 30 years." },
+  "Little Skate": { size: "About 20 inches across", range: "Sandy and muddy coastal bottoms, Nova Scotia to North Carolina", fact: "Skates lay their eggs in tough rectangular cases called \"mermaid's purses,\" which often wash up on beaches." },
+  "Harbor Seal": { size: "5–6 ft, up to 300 lbs", range: "Coastal waters and haul-out rocks, Canada to the Carolinas", fact: "Harbor seals can dive over 500 feet and hold their breath for up to 30 minutes." },
+  "Gray Seal": { size: "Males up to 8 ft and 800 lbs", range: "Coastal waters and remote islands, Canada to Cape Cod", fact: "Gray seal pups are born with a fluffy white coat and can nurse for only about 3 weeks before being left to fend for themselves." },
+  "Harbor Porpoise": { size: "4–5 ft", range: "Cool coastal waters throughout the North Atlantic", fact: "One of the smallest cetaceans in the world, and unlike dolphins, they rarely leap or ride boat wakes." },
+  "Humpback Whale": { size: "45–50 ft", range: "Migrates through the North Atlantic between feeding and breeding grounds", fact: "Each humpback's tail flukes are as unique as a fingerprint, letting researchers identify individuals for decades." },
+  "North Atlantic Right Whale": { size: "45–55 ft", range: "Coastal waters off New England and the Canadian Maritimes", fact: "One of the most endangered large whales on Earth, with roughly 350 individuals left; they're named for being the \"right\" whale to hunt since they float when killed." },
+  "Loggerhead Sea Turtle": { size: "3 ft shell length, up to 300 lbs", range: "Warmer Atlantic waters, ranging as far north as Cape Cod in summer", fact: "Loggerheads have powerful jaws built to crush hard-shelled prey like whelks and crabs." },
+  "Blue Shark": { size: "6–10 ft", range: "Open ocean, common well offshore throughout the Atlantic", fact: "One of the most far-ranging sharks known — tagged individuals have crossed entire ocean basins." },
+  "Basking Shark": { size: "Second-largest fish alive, up to 26 ft", range: "Cold coastal and offshore Atlantic waters, often near the surface", fact: "Despite its size, it's a harmless filter feeder that strains plankton through its enormous open mouth." },
+  "Atlantic Torpedo": { size: "Up to 6 ft", range: "Deeper coastal waters along the Atlantic seaboard", fact: "It can generate an electric shock of over 200 volts to stun prey or deter predators." },
+  "Winter Skate": { size: "Up to 3.5 ft", range: "Sandy coastal bottoms, Newfoundland to North Carolina", fact: "Named for being most common inshore during colder months, moving to deeper water in summer." },
+  "Clearnose Skate": { size: "About 2.5 ft", range: "Coastal sandy bottoms, mid-Atlantic and southern New England", fact: "Gets its name from translucent patches on either side of its snout." },
+  "American Eel": { size: "2–4 ft", range: "Rivers, estuaries, and coastal waters up and down the Atlantic seaboard", fact: "Every American eel is born in the Sargasso Sea and migrates enormous distances to freshwater rivers to grow up, then returns to the Sargasso once to spawn and die." },
+  "Atlantic Menhaden": { size: "10–12 inches", range: "Coastal waters, Nova Scotia to Florida", fact: "Menhaden filter plankton from the water and travel in massive schools that support entire coastal food webs." },
+  "Red Hake": { size: "Up to 2 ft", range: "Muddy coastal and shelf bottoms of the Northwest Atlantic", fact: "Juveniles famously shelter inside the shells of live sea scallops for protection." },
+  "Spotted Hake": { size: "Up to 16 inches", range: "Coastal waters, Nova Scotia to Florida", fact: "Uses long, whisker-like fin rays under its chin to feel for prey on the seafloor." },
+  "Tomcod": { size: "6–12 inches", range: "Coastal bays and river mouths, Labrador to Virginia", fact: "One of the few fish that spawns in near-freezing water, right under winter ice." },
+  "Oyster Toadfish": { size: "Up to 15 inches", range: "Shallow bays and estuaries, Maine to Florida", fact: "Males guard their eggs fiercely and can grunt loudly using a specialized swim-bladder muscle." },
+  "Goosefish": { size: "Up to 4 ft", range: "Sandy and muddy bottoms from Newfoundland to Florida", fact: "Also called \"monkfish,\" it lures prey using a modified fin ray that dangles like a fishing rod above its huge mouth." },
+  "Northern Pipefish": { size: "Up to 12 inches", range: "Shallow eelgrass beds along the Atlantic coast", fact: "A close relative of seahorses — and like seahorses, it's the male that carries the developing eggs." },
+  "Lined Seahorse": { size: "About 6 inches", range: "Seagrass beds, Nova Scotia to the Gulf of Mexico", fact: "Seahorses mate for life and perform an elaborate daily greeting dance with their partner." },
+  "Acadian Redfish": { size: "Up to 16 inches", range: "Deep, cold offshore waters of the Gulf of Maine", fact: "Gives birth to live young rather than laying eggs, unusual among bony fish." },
+  "Striped Searobin": { size: "Up to 15 inches", range: "Sandy coastal bottoms, Maine to Florida", fact: "\"Walks\" along the seafloor using modified lower fin rays that work almost like tiny legs." },
+  "Northern Searobin": { size: "Up to 17 inches", range: "Coastal sandy bottoms, Nova Scotia to Florida", fact: "Makes a distinct grunting or croaking sound by vibrating muscles against its swim bladder." },
+  "Longhorn Sculpin": { size: "Up to 18 inches", range: "Rocky and sandy coastal bottoms, Labrador to Virginia", fact: "Named for its long, spiny head projections that look like horns." },
+  "Grubby": { size: "Up to 7 inches", range: "Shallow coastal waters, Labrador to New Jersey", fact: "A small, chunky sculpin often found hiding among rocks and eelgrass at low tide." },
+  "Shorthorn Sculpin": { size: "Up to 15 inches", range: "Cold coastal waters, Arctic to Cape Cod", fact: "Extremely tolerant of near-freezing water, common under sea ice in the far north." },
+  "Sea Raven": { size: "Up to 2 ft", range: "Rocky coastal bottoms, Labrador to Virginia", fact: "Can inflate its stomach with water or air like a balloon when threatened, and comes in a wide range of colors from red to purple to white." },
+  "Alligatorfish": { size: "Around 6 inches", range: "Cold offshore waters of the Gulf of Maine and northward", fact: "Its body is armored in bony plates arranged in ridges, giving it a miniature alligator-like look." },
+  "Lumpfish": { size: "Up to 2 ft", range: "Cold rocky coastal waters, Arctic to New Jersey", fact: "Has a suction-cup-like disc on its belly, formed from modified pelvic fins, that lets it stick firmly to rocks." },
+  "Atlantic Spiny Lumpsucker": { size: "1–2 inches", range: "Cold northern Atlantic waters", fact: "One of the tiniest fish on this list, covered in rows of bony spines and often found clinging to seaweed." },
+  "Black Sea Bass": { size: "Up to 24 inches", range: "Coastal reefs and wrecks, Cape Cod to Florida", fact: "Nearly all black sea bass start life as females and can later change into males." },
+  "Cobia": { size: "Can exceed 5 ft", range: "Warmer Atlantic waters, occasionally straying north in summer", fact: "Often follows sharks, rays, and even boats out of curiosity, earning it the nickname \"crab-eater.\"" },
+  "Mackerel Scad": { size: "Up to 14 inches", range: "Warmer offshore Atlantic waters", fact: "Forms tight, fast-moving schools and is an important forage fish for larger predators." },
+  "Sheepshead": { size: "Up to 2.5 ft", range: "Coastal structure and jetties, mostly mid-Atlantic and south", fact: "Named for its human-like front teeth, perfectly built for crushing barnacles and shellfish." },
+  "Scup": { size: "Up to 18 inches", range: "Coastal waters, Cape Cod to South Carolina", fact: "Also called \"porgy,\" it's one of the most commonly caught panfish along the mid-Atlantic coast." },
+  "Tautog": { size: "Up to 3 ft", range: "Rocky reefs and wrecks, Nova Scotia to South Carolina", fact: "Sleeps tucked into rock crevices at night and can be strikingly slow-moving and tame around structure." },
+  "Cunner": { size: "Up to 15 inches", range: "Rocky coastal waters and pilings, Labrador to New Jersey", fact: "One of the few fish known to go dormant and stop feeding entirely during the coldest winter months." },
+  "Ocean Pout": { size: "Up to 3.5 ft", range: "Cold coastal bottoms, Labrador to Delaware", fact: "Produces a natural antifreeze protein in its blood that keeps it active in near-freezing water." },
+  "Snakeblenny": { size: "Up to 16 inches", range: "Cold rocky coastal waters of the North Atlantic", fact: "Its long, eel-like body and small fins let it slip easily into rocky crevices." },
+  "Arctic Shanny": { size: "Up to 8 inches", range: "Cold rocky tide pools and shallows, Arctic to the Gulf of Maine", fact: "Often found stranded in tide pools at low tide, tolerating hours out of full submersion." },
+  "Radiated Shanny": { size: "Up to 6 inches", range: "Rocky coastal shallows, Labrador to New Jersey", fact: "Named for the radiating lines patterning its fins." },
+  "Rock Gunnel": { size: "Up to 12 inches", range: "Rocky intertidal zones, Labrador to New Jersey", fact: "Can survive being exposed to air at low tide for hours by hiding under damp seaweed and rocks." },
+  "Atlantic Wolffish": { size: "Up to 5 ft", range: "Cold rocky and offshore waters of the North Atlantic", fact: "Has powerful jaws and blunt teeth built for crushing sea urchins and hard-shelled prey whole." },
+  "American Sand Lance": { size: "Up to 7 inches", range: "Sandy coastal waters throughout the North Atlantic", fact: "Buries itself in sand to hide, and forms massive schools that whales, seabirds, and larger fish depend on." },
+  "Windowpane Flounder": { size: "Up to 18 inches", range: "Sandy coastal bottoms, Gulf of Maine to South Carolina", fact: "Its body is thin enough to be almost translucent, giving it the name \"windowpane.\"" },
+  "Summer Flounder": { size: "Up to 3 ft", range: "Coastal waters, Maine to Florida", fact: "Also called \"fluke,\" it's an aggressive ambush predator despite spending most of its time buried in sand." },
+  "Fourspot Flounder": { size: "Up to 18 inches", range: "Sandy coastal and shelf bottoms, Gulf of Maine to Florida", fact: "Named for the four dark spots that form a distinctive square pattern on its upper side." },
+  "American Plaice": { size: "Up to 2.5 ft", range: "Cold offshore waters of the North Atlantic", fact: "Also called \"dab,\" it's one of the larger flatfish found on the Northwest Atlantic continental shelf." },
+  "Gray Triggerfish": { size: "Up to 2 ft", range: "Warmer Atlantic waters, occasionally straying north in summer", fact: "Can lock its dorsal spine upright to wedge itself into rock crevices, making it nearly impossible to pull out." },
+  "Northern Puffer": { size: "Up to 14 inches", range: "Coastal waters, Maine to Florida", fact: "Inflates itself with water when threatened and contains a potent toxin, tetrodotoxin, in its skin and organs." },
+  "Ocean Sunfish": { size: "Can exceed 10 ft and 2,000 lbs", range: "Open Atlantic waters, occasionally seen basking at the surface", fact: "The heaviest bony fish in the world, and its body plan is essentially just a massive head with fins." },
+
+  "American Lobster": { size: "Typically 8–24 inches", range: "Rocky coastal bottoms, Labrador to New Jersey", fact: "Lobsters can regrow lost claws and legs, and some individuals are believed to live well past 50 years." },
+  "Atlantic Rock Crab": { size: "Up to 5 inches across", range: "Rocky and sandy coastal bottoms, Labrador to South Carolina", fact: "One of the most commonly found crabs under rocks at low tide throughout New England." },
+  "Jonah Crab": { size: "Up to 6 inches across", range: "Rocky coastal and offshore bottoms, Newfoundland to Florida", fact: "Named after a 19th-century American folk figure, and often confused with the similar rock crab." },
+  "Blue Crab": { size: "Up to 9 inches across", range: "Estuaries and coastal waters, mostly mid-Atlantic and south", fact: "An excellent swimmer thanks to its paddle-shaped rear legs, unusual among crabs." },
+  "Green Crab": { size: "Up to 4 inches across", range: "Coastal waters and tide pools throughout the North Atlantic", fact: "An invasive species from Europe that has spread widely along the Atlantic coast and can shift its shell color from green to red as it ages." },
+  "Horseshoe Crab": { size: "Up to 2 ft including tail", range: "Coastal shallows and beaches, Maine to Mexico", fact: "More closely related to spiders and scorpions than to true crabs, and its blue blood is used in medical testing worldwide." },
+  "Northern Krill": { size: "About 1.5 inches", range: "Open and coastal North Atlantic waters", fact: "Forms massive swarms that are a critical food source for whales, seabirds, and countless fish species." },
+  "Acorn Barnacle": { size: "Under 1 inch", range: "Rocky intertidal zones throughout the North Atlantic", fact: "Feeds by kicking feathery legs out of its shell to filter plankton from the water, even while permanently cemented in place." },
+  "Snow Crab": { size: "Up to 6 inches across", range: "Cold offshore waters of the North Atlantic", fact: "Prefers deep, near-freezing water and is one of the most commercially important crab species in Atlantic Canada." },
+  "Portly Spider Crab": { size: "Up to 4 inches across", range: "Coastal bottoms, Maine to Florida", fact: "Often decorates its shell with algae and sponges as camouflage." },
+  "Atlantic Sand Crab": { size: "About 1.5 inches", range: "Sandy surf zones along the Atlantic coast", fact: "Also called the \"mole crab,\" it burrows backward into wet sand with each retreating wave." },
+  "Ocellate Lady Crab": { size: "Up to 3 inches across", range: "Sandy coastal bottoms, Cape Cod to Florida", fact: "Named for the eye-like spots scattered across its purple-speckled shell." },
+  "Atlantic Fiddler Crab": { size: "About 1 inch across", range: "Coastal marshes and mudflats, mid-Atlantic and south", fact: "Males have one dramatically oversized claw used to attract mates and defend burrows." },
+  "Norway King Crab": { size: "Up to 6 inches across", range: "Cold deep waters of the North Atlantic", fact: "A true king crab with only three pairs of visible walking legs, unlike most crabs' four." },
+
+  "Forbes Sea Star": { size: "Up to 5 inches across", range: "Coastal rocky and sandy bottoms, Gulf of Maine to Florida", fact: "One of the most common sea stars on the Atlantic coast, and can regenerate a lost arm over several months." },
+  "Northern Sea Star": { size: "Up to 16 inches across", range: "Cold coastal waters, Labrador to New Jersey", fact: "A voracious predator of mussels and clams, prying shells open with steady pressure from its tube feet." },
+  "Green Sea Urchin": { size: "Up to 3 inches across", range: "Rocky coastal bottoms throughout the North Atlantic", fact: "Grazes on kelp using a specialized five-part jaw structure known as \"Aristotle's lantern.\"" },
+  "Sand Dollar": { size: "Up to 3 inches across", range: "Sandy coastal bottoms, Gulf of Maine to South Carolina", fact: "The living animal is covered in short purple-brown spines; the smooth white \"skeleton\" people find on beaches is only what's left after it dies." },
+  "Orange-Footed Sea Cucumber": { size: "Up to 10 inches", range: "Cold coastal and offshore waters of the North Atlantic", fact: "Feeds by catching drifting particles on sticky, branching tentacles around its mouth." },
+  "Basket Star": { size: "Central disc up to 4 inches, arms spanning over a foot", range: "Cold deep coastal and offshore waters", fact: "Its arms branch repeatedly into a lacy net used to catch plankton, which it unfurls at night." },
+  "Blood Star": { size: "Up to 5 inches across", range: "Rocky coastal and offshore bottoms, Arctic to New Jersey", fact: "Named for its vivid red-orange color, though shade can vary widely between individuals." },
+  "Daisy Brittle Star": { size: "Disc about 1 inch, arms up to 3 inches", range: "Rocky and sandy coastal bottoms, Arctic to New Jersey", fact: "Moves with quick, snake-like arm movements and can shed an arm to escape a predator's grip." },
+
+  "Blue Mussel": { size: "Up to 4 inches", range: "Rocky intertidal zones throughout the North Atlantic", fact: "Anchors itself to rocks using tough protein threads called byssal threads, which it can also use to \"crawl\" slowly." },
+  "Eastern Oyster": { size: "Up to 8 inches", range: "Estuaries and coastal bays, Gulf of St. Lawrence to the Gulf of Mexico", fact: "A single oyster can filter over 50 gallons of water a day, helping keep coastal waters clear." },
+  "Moon Snail": { size: "Shell up to 5 inches", range: "Sandy coastal bottoms, Labrador to Florida", fact: "Drills a perfectly round hole into other mollusks' shells using an acid-secreting organ to feed on them." },
+  "Common Periwinkle": { size: "Up to 1 inch", range: "Rocky intertidal zones throughout the North Atlantic", fact: "Introduced from Europe centuries ago, it's now one of the most abundant snails on the Atlantic coast." },
+  "Sea Scallop": { size: "Shell up to 8 inches", range: "Cold offshore sandy bottoms of the North Atlantic", fact: "Unlike most bivalves, scallops can swim by rapidly clapping their shells together to jet away from predators." },
+  "Northern Quahog": { size: "Shell up to 4 inches", range: "Sandy and muddy coastal bottoms, Gulf of St. Lawrence to Florida", fact: "Its shell was used by Indigenous peoples of the Northeast to make wampum beads." },
+  "Longfin Inshore Squid": { size: "Up to 20 inches including tentacles", range: "Coastal and shelf waters, Newfoundland to Florida", fact: "Can rapidly change color and pattern using pigment cells called chromatophores in its skin." },
+  "Waved Whelk": { size: "Shell up to 4 inches", range: "Cold coastal bottoms, Arctic to New Jersey", fact: "Lays egg cases in a spongy cluster that often washes ashore and is sometimes mistaken for a sea sponge." },
+  "Knobbed Whelk": { size: "Shell up to 9 inches, the largest snail on the Atlantic coast", range: "Sandy coastal bottoms, Cape Cod to Florida", fact: "Its egg case looks like a string of tan, disc-shaped beads and can wash up over a foot long." },
+  "Channeled Whelk": { size: "Shell up to 7.5 inches", range: "Sandy coastal bottoms, Cape Cod to Florida", fact: "Named for the deep spiral grooves, or \"channels,\" running down its shell." },
+
+  "Moon Jellyfish": { size: "Bell up to 16 inches across", range: "Coastal waters throughout the North Atlantic", fact: "Its sting is mild enough to barely be felt by most people, and its translucent bell often shows four visible horseshoe-shaped organs." },
+  "Lion's Mane Jellyfish": { size: "Bell can exceed 3 ft, tentacles over 100 ft", range: "Cold coastal waters, Arctic to the mid-Atlantic", fact: "The largest known species of jellyfish in the world, with tentacles that can stretch longer than a blue whale." },
+  "Portuguese Man-of-War": { size: "Float up to 12 inches, tentacles up to 30 ft", range: "Warm open ocean, occasionally drifting into northern waters", fact: "Not actually a single animal — it's a colony of specialized organisms working together, and its sting can be dangerous even after it's washed ashore dead." },
+  "Northern Star Coral": { size: "Colonies a few inches across", range: "Rocky coastal bottoms, Cape Cod to the Gulf of Mexico", fact: "One of the only true stony corals found this far north, tolerating much colder water than its tropical relatives." },
+  "Dead Man's Fingers": { size: "Colonies up to 8 inches tall", range: "Rocky coastal bottoms, Arctic to New Jersey", fact: "A soft coral whose pale, lobed colonies genuinely resemble bloated fingers reaching up from the seafloor." },
+  "Northern Red Anemone": { size: "Up to 4 inches across", range: "Rocky coastal bottoms, Arctic to New Jersey", fact: "Can live for decades in the same spot and comes in shades ranging from deep red to orange to pale pink." },
+
+  "Lugworm": { size: "Up to 9 inches", range: "Sandy and muddy intertidal flats throughout the North Atlantic", fact: "Its distinctive coiled sand castings on beaches are actually its digested waste, pushed up from a U-shaped burrow below." },
+  "Bloodworm": { size: "Up to 14 inches", range: "Sandy and muddy intertidal flats, Gulf of St. Lawrence to Florida", fact: "Named for its red blood pigment visible through its skin, and it can deliver a surprisingly sharp bite with four tiny jaws." },
+  "Clam Worm": { size: "Up to 3 ft", range: "Sandy and muddy coastal bottoms throughout the North Atlantic", fact: "A fast, active predator that hunts small invertebrates at night and is a favorite bait among surf fishermen." },
+  "Golden Star Tunicate": { size: "Colonies a few inches across, individuals just millimeters", range: "Rocky coastal bottoms and pilings throughout the North Atlantic", fact: "Each tiny star-shaped cluster is actually a group of individual animals sharing a common outer casing." },
+  "Appendicularian": { size: "Body just a few millimeters", range: "Open coastal and offshore waters worldwide", fact: "Builds and discards an elaborate mucus \"house\" around itself every few hours to filter plankton, one of the strangest structures in the animal kingdom." },
+  "Sea Vase": { size: "Up to 6 inches tall", range: "Coastal bottoms and pilings throughout the North Atlantic", fact: "An invasive tunicate from Europe that can form dense colonies and filters an enormous volume of water for its size." },
+};
+
 const PHOTO_CREDITS = {
   // add entries here
 };
@@ -790,7 +909,7 @@ export default function ReefLedger({ user, onSignOut }) {
               <div style={styles.rowText}>
                 <div style={styles.rowName}>
                   {s.name}
-                  {isCustom && <span style={styles.customTag}>added</span>}
+                  {isCustom && null}
                   <RarityTag rarity={s.rarity} styles={styles} />
                 </div>
                 <div style={styles.rowLatin}>{s.latin}</div>
@@ -976,6 +1095,7 @@ function DetailModal({ styles, t, species, record, onClose, onUpdate, onToggleFo
   const [savingDefault, setSavingDefault] = useState(false);
   const PlaceholderIcon = PHYLUM_ICON[species.phylum] || FishIcon;
   const credit = sharedPhotos[slug(species.name)] || PHOTO_CREDITS[species.name];
+  const info = SPECIES_INFO[species.name];
   const headerPhoto = record.photos?.[0] || credit?.url;
 
   const [form, setForm] = useState({
@@ -1036,6 +1156,14 @@ function DetailModal({ styles, t, species, record, onClose, onUpdate, onToggleFo
             <a href={credit.sourceUrl} target="_blank" rel="noopener noreferrer" style={styles.creditLink}>source</a>
             {" · "}
             <a href={credit.licenseUrl} target="_blank" rel="noopener noreferrer" style={styles.creditLink}>{credit.license}</a>
+          </div>
+        )}
+
+        {info && (
+          <div style={styles.infoBox}>
+            <div style={styles.infoRow}><span style={styles.infoLabel}>Size</span><span style={styles.infoValue}>{info.size}</span></div>
+            <div style={styles.infoRow}><span style={styles.infoLabel}>Found</span><span style={styles.infoValue}>{info.range}</span></div>
+            <div style={styles.infoFact}>{info.fact}</div>
           </div>
         )}
 
@@ -1257,6 +1385,11 @@ function getStyles(t) {
     modalTitle: { fontFamily: t.headingFont, fontSize: 20, fontWeight: 600, color: t.text, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
     modalLatin: { fontSize: 12, fontStyle: "italic", color: t.textDim, marginTop: 2 },
     creditLine: { fontSize: 10.5, color: t.textDim, marginBottom: 14, lineHeight: 1.5 },
+    infoBox: { background: t.panel, border: `${t.borderWidth}px solid ${t.border}`, borderRadius: t.radius, padding: "12px 14px", marginBottom: 16 },
+    infoRow: { display: "flex", gap: 8, fontSize: 12.5, marginBottom: 5 },
+    infoLabel: { color: t.accent, fontFamily: t.monoFont, fontSize: 10, minWidth: 46, flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.03em", paddingTop: 1 },
+    infoValue: { color: t.text },
+    infoFact: { fontSize: 12.5, color: t.textDim, lineHeight: 1.5, marginTop: 8, fontStyle: "italic" },
     lightboxOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24, boxSizing: "border-box", cursor: "zoom-out" },
     lightboxClose: { position: "absolute", top: 20, right: 20, background: "rgba(255,255,255,0.1)", border: "none", borderRadius: "50%", width: 40, height: 40, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" },
     lightboxImg: { maxWidth: "100%", maxHeight: "80vh", borderRadius: 8, cursor: "default", boxShadow: "0 10px 40px rgba(0,0,0,0.5)" },
