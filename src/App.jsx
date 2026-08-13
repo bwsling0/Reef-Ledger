@@ -1306,7 +1306,7 @@ function SettingsModal({ styles, onClose, userEmail, onSignOut, username, isPriv
             </div>
           ) : (
             <div>
-              <input style={styles.dateInput} value={nameInput} onChange={(e) => setNameInput(e.target.value)} placeholder="e.g. reef_brooks" />
+              <input style={styles.dateInput} value={nameInput} onChange={(e) => setNameInput(e.target.value)} placeholder="username" />
               {nameErr && <div style={styles.saveError}>{nameErr}</div>}
               <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                 <button style={styles.secondaryBtn} onClick={() => setEditingName(false)}>Cancel</button>
@@ -1541,7 +1541,7 @@ function UsernameModal({ styles, onClose, onClaim }) {
         </div>
         <label style={styles.field}>
           <span style={styles.fieldLabel}>Username</span>
-          <input style={styles.dateInput} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. reef_brooks" />
+          <input style={styles.dateInput} value={name} onChange={(e) => setName(e.target.value)} placeholder="username" />
         </label>
         {err && <div style={styles.saveError}>{err}</div>}
         <button style={styles.primaryBtn} disabled={!name.trim() || busy} onClick={submit}>
@@ -1558,6 +1558,7 @@ function UsernameModal({ styles, onClose, onClaim }) {
 function FriendsModal({ styles, t, user, username, isPrivate, onClose }) {
   const [tab, setTab] = useState("friends");
   const [friends, setFriends] = useState([]);
+  const [followers, setFollowers] = useState([]);
   const [requests, setRequests] = useState([]);
   const [pending, setPending] = useState([]);
   const [searchText, setSearchText] = useState("");
@@ -1572,12 +1573,26 @@ function FriendsModal({ styles, t, user, username, isPrivate, onClose }) {
       const followingSnap = await getDocs(query(
         collection(db, "follows"), where("followerUid", "==", user.uid), where("status", "==", "accepted")
       ));
-      const friendUids = followingSnap.docs.map((d) => d.data().followeeUid);
-      const friendProfiles = await Promise.all(friendUids.map(async (uid) => {
+      const followingUids = followingSnap.docs.map((d) => d.data().followeeUid);
+      const followingSet = new Set(followingUids);
+
+      const followersSnap = await getDocs(query(
+        collection(db, "follows"), where("followeeUid", "==", user.uid), where("status", "==", "accepted")
+      ));
+      const followerUids = followersSnap.docs.map((d) => d.data().followerUid);
+      const followerSet = new Set(followerUids);
+
+      const friendProfiles = await Promise.all(followingUids.map(async (uid) => {
         const s = await getDoc(doc(db, "users", uid));
-        return s.exists() ? { uid, ...s.data() } : null;
+        return s.exists() ? { uid, isMutual: followerSet.has(uid), ...s.data() } : null;
       }));
       setFriends(friendProfiles.filter(Boolean));
+
+      const followerProfiles = await Promise.all(followerUids.map(async (uid) => {
+        const s = await getDoc(doc(db, "users", uid));
+        return s.exists() ? { uid, isMutual: followingSet.has(uid), ...s.data() } : null;
+      }));
+      setFollowers(followerProfiles.filter(Boolean));
 
       if (isPrivate) {
         const reqSnap = await getDocs(query(
@@ -1666,14 +1681,15 @@ function FriendsModal({ styles, t, user, username, isPrivate, onClose }) {
   }
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+    <div style={styles.overlayCenter} onClick={onClose}>
+      <div style={styles.modalCentered} onClick={(e) => e.stopPropagation()}>
         <button style={styles.closeBtn} onClick={onClose}><X size={18} /></button>
         <div style={styles.modalTitle}>Friends</div>
         <div style={{ ...styles.hint, marginBottom: 12 }}>You're @{username}</div>
 
         <div style={styles.friendTabs}>
-          <button style={{ ...styles.friendTab, ...(tab === "friends" ? styles.friendTabActive : {}) }} onClick={() => setTab("friends")}>Friends</button>
+          <button style={{ ...styles.friendTab, ...(tab === "friends" ? styles.friendTabActive : {}) }} onClick={() => setTab("friends")}>Following</button>
+          <button style={{ ...styles.friendTab, ...(tab === "followers" ? styles.friendTabActive : {}) }} onClick={() => setTab("followers")}>Followers</button>
           <button style={{ ...styles.friendTab, ...(tab === "search" ? styles.friendTabActive : {}) }} onClick={() => setTab("search")}>Add</button>
           {isPrivate && (
             <button style={{ ...styles.friendTab, ...(tab === "requests" ? styles.friendTabActive : {}) }} onClick={() => setTab("requests")}>
@@ -1686,17 +1702,35 @@ function FriendsModal({ styles, t, user, username, isPrivate, onClose }) {
         {tab === "friends" && (
           <div>
             {loadingLists && <div style={styles.hint}>Loading…</div>}
-            {!loadingLists && friends.length === 0 && <div style={styles.empty}>No friends yet — try the Add tab.</div>}
+            {!loadingLists && friends.length === 0 && <div style={styles.empty}>Not following anyone yet — try the Add tab.</div>}
             {friends.map((f) => (
               <button key={f.uid} style={styles.friendRow} onClick={() => setViewingFriend(f)}>
                 <div style={styles.friendAvatar}><Users size={16} /></div>
                 <div style={{ flex: 1, textAlign: "left" }}>
                   <div style={styles.friendName}>@{f.username}</div>
+                  <div style={styles.achievementSub}>{f.isMutual ? "Friends" : "Following"}</div>
                 </div>
               </button>
             ))}
           </div>
         )}
+
+        {tab === "followers" && (
+          <div>
+            {loadingLists && <div style={styles.hint}>Loading…</div>}
+            {!loadingLists && followers.length === 0 && <div style={styles.empty}>No followers yet.</div>}
+            {followers.map((f) => (
+              <button key={f.uid} style={styles.friendRow} onClick={() => setViewingFriend(f)}>
+                <div style={styles.friendAvatar}><Users size={16} /></div>
+                <div style={{ flex: 1, textAlign: "left" }}>
+                  <div style={styles.friendName}>@{f.username}</div>
+                  <div style={styles.achievementSub}>{f.isMutual ? "Friends" : "Follows you"}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
 
         {tab === "search" && (
           <div>
@@ -1774,8 +1808,8 @@ function FriendProfileView({ styles, friend, onBack, onClose }) {
   });
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+    <div style={styles.overlayCenter} onClick={onClose}>
+      <div style={styles.modalCentered} onClick={(e) => e.stopPropagation()}>
         <button style={styles.closeBtn} onClick={onClose}><X size={18} /></button>
         <button style={styles.backBtn} onClick={onBack}><ArrowLeft size={15} /> Friends</button>
         <div style={styles.modalTitle}>@{friend.username}</div>
@@ -1943,7 +1977,9 @@ function getStyles(t) {
     saveError: { color: t.coral, fontSize: 11.5 },
 
     overlay: { position: "fixed", inset: 0, background: "rgba(10,20,20,0.7)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50 },
+    overlayCenter: { position: "fixed", inset: 0, background: "rgba(10,20,20,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16, boxSizing: "border-box" },
     modal: { background: t.bg, border: `${t.borderWidth}px solid ${t.border}`, borderBottom: "none", borderRadius: `${t.radiusLg}px ${t.radiusLg}px 0 0`, padding: "22px 20px 28px", width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", position: "relative", boxSizing: "border-box" },
+    modalCentered: { background: t.bg, border: `${t.borderWidth}px solid ${t.border}`, borderRadius: t.radiusLg, padding: "22px 20px 28px", width: "100%", maxWidth: 480, maxHeight: "85vh", overflowY: "auto", position: "relative", boxSizing: "border-box" },
     closeBtn: { position: "absolute", top: 16, right: 16, background: "transparent", border: "none", color: t.textDim, cursor: "pointer" },
     backBtn: { display: "flex", alignItems: "center", gap: 5, background: "transparent", border: "none", color: t.accent, fontSize: 12.5, cursor: "pointer", marginBottom: 10, padding: 0 },
     modalHeader: { display: "flex", alignItems: "center", gap: 12, marginBottom: 16 },
